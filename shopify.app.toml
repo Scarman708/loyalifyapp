@@ -2,7 +2,7 @@
 
 client_id = "be493f3208915e4b593501309862ba4a"
 name = "Loyalify App"
-application_url = "https://example.com"
+application_url = "https://loyalifyapp.onrender.com"
 embedded = true
 
 [build]
@@ -16,4 +16,4 @@ api_version = "2026-07"
 scopes = "write_customers,read_customers,write_orders,read_orders,read_products,write_products,write_themes,write_content,read_themes,write_discounts"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://loyalifyapp.onrender.com/api/auth" ]
