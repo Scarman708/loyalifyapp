@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type {
   ActionFunctionArgs,
   HeadersFunction,
@@ -88,6 +88,38 @@ export default function Index() {
   const fetcher = useFetcher<typeof action>();
 
   const shopify = useAppBridge();
+  // ── Loyalty test ──────────────────────────────────────────────
+
+// Add this near your other fetcher
+const loyaltyFetcher = useFetcher<any>();
+const [loyaltyData, setLoyaltyData] = useState<any>(null);
+const testCustomerId = "8536572952768"; // ← replace this
+
+// Watch for fetcher results
+useEffect(() => {
+  if (loyaltyFetcher.data) {
+    setLoyaltyData(loyaltyFetcher.data);
+  }
+}, [loyaltyFetcher.data]);
+
+const checkBalance = () => {
+  loyaltyFetcher.load(`/api/customer-points?customerId=${testCustomerId}`);
+};
+
+const awardTestPoints = () => {
+  loyaltyFetcher.submit(
+    { customerId: testCustomerId, action: "award", points: 100, note: "Test award" },
+    { method: "POST", action: "/api/customer-points", encType: "application/json" }
+  );
+};
+
+const deductTestPoints = () => {
+  loyaltyFetcher.submit(
+    { customerId: testCustomerId, action: "deduct", points: 50, note: "Test deduct" },
+    { method: "POST", action: "/api/customer-points", encType: "application/json" }
+  );
+};
+ 
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
@@ -245,6 +277,25 @@ export default function Index() {
           </s-list-item>
         </s-unordered-list>
       </s-section>
+
+      {/* ── TEMPORARY: Loyalty API test panel — remove before launch ── */}
+<s-section heading="🧪 Loyalty Points API Test">
+  <s-stack direction="block" gap="base">
+    <s-paragraph>Customer ID: <strong>{testCustomerId}</strong></s-paragraph>
+    <s-stack direction="inline" gap="base">
+      <s-button onClick={checkBalance}>Check Balance</s-button>
+      <s-button onClick={awardTestPoints}>Award 100 pts</s-button>
+      <s-button onClick={deductTestPoints}>Deduct 50 pts</s-button>
+    </s-stack>
+    {loyaltyData && (
+      <s-box padding="base" borderWidth="base" borderRadius="base" background="subdued">
+        <pre style={{ margin: 0 }}>
+          <code>{JSON.stringify(loyaltyData, null, 2)}</code>
+        </pre>
+      </s-box>
+    )}
+  </s-stack>
+</s-section>
     </s-page>
   );
 }

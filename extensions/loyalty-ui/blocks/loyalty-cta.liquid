@@ -1,0 +1,58 @@
+{% comment %}
+  Loyalty CTA Block
+  Merchants configure heading, description, button text in theme editor.
+  - Not logged in → shows login link
+  - Logged in, not enrolled → join button → success → redirect to dashboard
+  - Logged in, already enrolled → button click goes straight to dashboard
+{% endcomment %}
+
+<div
+  id="loyalty-cta-root"
+  data-heading="{{ block.settings.heading | escape }}"
+  data-description="{{ block.settings.description | escape }}"
+  data-button-text="{{ block.settings.button_text | escape }}"
+></div>
+
+<script>
+  window.__LOYALTY_APP_URL__ = {{ shop.metafields.loyalty.app_url | json }};
+  window.__LOYALTY_SHOP__    = {{ shop.permanent_domain | json }};
+
+  {% if customer %}
+    window.__LOYALTY_CUSTOMER_ID__         = {{ customer.id | json }};
+    window.__LOYALTY_CUSTOMER_EMAIL__      = {{ customer.email | json }};
+    window.__LOYALTY_CUSTOMER_FIRST_NAME__ = {{ customer.first_name | json }};
+    window.__LOYALTY_CUSTOMER_LAST_NAME__  = {{ customer.last_name | json }};
+  {% else %}
+    window.__LOYALTY_CUSTOMER_ID__ = null;
+  {% endif %}
+</script>
+
+{{ 'loyalty-cta.js' | asset_url | script_tag }}
+
+{% schema %}
+{
+  "name": "Loyalty CTA",
+  "target": "section",
+  "javascript": "loyalty-cta.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Earn rewards on every order"
+    },
+    {
+      "type": "textarea",
+      "id": "description",
+      "label": "Description",
+      "default": "Join our loyalty program and start earning points with every purchase. Unlock exclusive tiers and redeem rewards."
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Button text",
+      "default": "Join the program"
+    }
+  ]
+}
+{% endschema %}

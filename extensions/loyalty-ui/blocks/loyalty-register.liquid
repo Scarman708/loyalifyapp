@@ -1,0 +1,524 @@
+{% comment %}
+  Loyalty Register Section Block
+  Works like Dawn's Rich Text section — full-width, merchant-customizable.
+  - Not logged in → login link
+  - Logged in, not enrolled → "Join Loyalty Program" → signup → redirect to dashboard
+  - Logged in, enrolled → "Go to Loyalty Dashboard" → direct link
+{% endcomment %}
+
+<style>
+  #loyalty-register-{{ section.id }} {
+    --lr-accent:       {{ block.settings.accent_color }};
+    --lr-bg:           {{ block.settings.bg_color }};
+    --lr-text:         {{ block.settings.text_color }};
+    --lr-btn-bg:       {{ block.settings.button_color }};
+    --lr-btn-text:     {{ block.settings.button_text_color }};
+    --lr-radius:       {{ block.settings.border_radius }}px;
+    --lr-align:        {{ block.settings.text_alignment }};
+      background: var(--lr-bg);
+    padding: {{ block.settings.padding_top }}px {{ block.settings.padding_side }}px {{ block.settings.padding_bottom }}px;
+  }
+
+  #loyalty-register-{{ section.id }} .lr-inner {
+    max-width: {{ block.settings.content_width }}px;
+    margin: 0 auto;
+    text-align: var(--lr-align);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: color-mix(in srgb, var(--lr-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lr-accent) 35%, transparent);
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--lr-accent);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  #loyalty-register-{{ section.id }} .lr-heading * {
+    font-size: clamp(28px, 4vw, {{ block.settings.heading_size }}px);
+    font-weight: 400;
+    line-height: 1.15;
+    color: var(--lr-text);
+    margin: 0 0 16px;
+  }
+
+  #loyalty-register-{{ section.id }} .lr-heading em {
+    font-style: italic;
+    color: var(--lr-accent);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-desc {
+    font-family: 'DM Sans', sans-serif;
+    font-size: {{ block.settings.description_size }}px;
+    color: color-mix(in srgb, var(--lr-text) 65%, transparent);
+    line-height: 1.7;
+    margin: 0 0 32px;
+    max-width: 560px;
+    {% if block.settings.text_alignment == 'center' %}margin-left: auto; margin-right: auto;{% endif %}
+    {% if block.settings.text_alignment == 'right' %}margin-left: auto;{% endif %}
+  }
+
+  #loyalty-register-{{ section.id }} .lr-perks {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 32px;
+    justify-content: var(--lr-align);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-perk {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: color-mix(in srgb, var(--lr-text) 5%, transparent);
+    border: 1px solid color-mix(in srgb, var(--lr-text) 10%, transparent);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: color-mix(in srgb, var(--lr-text) 75%, transparent);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn-wrap {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: var(--lr-align);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    border-radius: var(--lr-radius);
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition: all 0.2s ease;
+    text-decoration: none;
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn-primary {
+    background: var(--lr-btn-bg);
+    color: var(--lr-btn-text);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn-primary:hover {
+    opacity: 0.88;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn-secondary {
+    background: transparent;
+    color: var(--lr-text);
+    border: 1px solid color-mix(in srgb, var(--lr-text) 25%, transparent);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-btn-secondary:hover {
+    border-color: color-mix(in srgb, var(--lr-text) 60%, transparent);
+    background: color-mix(in srgb, var(--lr-text) 5%, transparent);
+  }
+
+  #loyalty-register-{{ section.id }} .lr-spinner {
+    width: 16px; height: 16px;
+    border: 2px solid color-mix(in srgb, var(--lr-btn-text) 30%, transparent);
+    border-top-color: var(--lr-btn-text);
+    border-radius: 50%;
+    animation: lr-spin 0.7s linear infinite;
+  }
+  @keyframes lr-spin { to { transform: rotate(360deg); } }
+
+  #loyalty-register-{{ section.id }} .lr-success-msg {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: #1a7a4a;
+    font-weight: 500;
+    justify-content: var(--lr-align);
+    margin-top: 16px;
+  }
+  #loyalty-register-{{ section.id }} .lr-success-msg.show { display: flex; }
+</style>
+{% assign flex_align = 'center' %}
+
+{% if block.settings.text_alignment == 'left' %}
+  {% assign flex_align = 'flex-start' %}
+{% elsif block.settings.text_alignment == 'right' %}
+  {% assign flex_align = 'flex-end' %}
+{% endif %}
+<div id="loyalty-register-{{ section.id }}">
+  <div class="lr-inner">
+
+    {% if block.settings.eyebrow != blank %}
+      <div class="lr-eyebrow">✦ {{ block.settings.eyebrow }}</div>
+    {% endif %}
+
+    <h2 class="lr-heading">{{ block.settings.heading }}</h2>
+
+    {% if block.settings.description != blank %}
+      <p class="lr-desc">{{ block.settings.description }}</p>
+    {% endif %}
+
+    {% if block.settings.show_perks %}
+      <div class="lr-perks">
+        {% if block.settings.perk_1 != blank %}<div class="lr-perk">{{ block.settings.perk_1 }}</div>{% endif %}
+        {% if block.settings.perk_2 != blank %}<div class="lr-perk">{{ block.settings.perk_2 }}</div>{% endif %}
+        {% if block.settings.perk_3 != blank %}<div class="lr-perk">{{ block.settings.perk_3 }}</div>{% endif %}
+      </div>
+    {% endif %}
+
+    <div class="lr-btn-wrap" id="lr-btn-wrap-{{ section.id }}">
+      {% if customer %}
+        <button
+          class="lr-btn lr-btn-primary"
+          id="lr-main-btn-{{ section.id }}"
+          data-section="{{ section.id }}"
+          data-shop="{{ shop.permanent_domain }}"
+          data-customer-id="{{ customer.id }}"
+          data-customer-email="{{ customer.email }}"
+          data-customer-first="{{ customer.first_name }}"
+          data-customer-last="{{ customer.last_name }}"
+          data-app-url="{{ shop.metafields.loyalty.app_url }}"
+          data-dashboard-url="{{ block.settings.dashboard_url | default: '/pages/loyalty-rewards' }}"
+        >
+          {{ block.settings.button_text }}
+        </button>
+      {% else %}
+        <a
+          href="/account/login?return_url={{ request.path | url_encode }}"
+          class="lr-btn lr-btn-primary"
+        >
+          {{ block.settings.login_button_text }}
+        </a>
+      {% endif %}
+
+      {% if block.settings.show_secondary_button and block.settings.secondary_button_text != blank %}
+        <a href="{{ block.settings.secondary_button_url }}" class="lr-btn lr-btn-secondary">
+          {{ block.settings.secondary_button_text }}
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="lr-success-msg" id="lr-success-{{ section.id }}">
+      <span>✓</span> You're enrolled! Redirecting to your dashboard…
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  const btn = document.getElementById('lr-main-btn-{{ section.id }}');
+  if (!btn) return;
+
+  const SECTION_ID   = '{{ section.id }}';
+  const APP_URL      = btn.dataset.appUrl || '';
+  const SHOP         = btn.dataset.shop || '';
+  const CUSTOMER_ID  = btn.dataset.customerId || '';
+  const DASHBOARD    = btn.dataset.dashboardUrl || '/pages/loyalty-rewards';
+
+  // On load — check enrollment status and update button text
+  async function checkEnrollment() {
+    if (!APP_URL || !SHOP || !CUSTOMER_ID) return;
+    try {
+      const res  = await fetch(`${APP_URL}/api/loyalty-dashboard?shop=${encodeURIComponent(SHOP)}&customerId=${encodeURIComponent(CUSTOMER_ID)}`);
+      
+      const data = await res.json();
+      if (data.enrolled) {
+        btn.textContent = {{ block.settings.enrolled_button_text | json }};
+        btn.dataset.enrolled = 'true';
+        btn.dataset.enrolled = 'true';
+btn.classList.add('enrolled');
+      }
+    } catch(e) {}
+  }
+
+  checkEnrollment();
+
+  btn.addEventListener('click', async function() {
+    // Already enrolled — just redirect
+    if (btn.dataset.enrolled === 'true') {
+      window.location.href = DASHBOARD;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="lr-spinner"></div> Joining…';
+
+    try {
+      const res  = await fetch(`${APP_URL}/api/loyalty-signup`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          shop:      SHOP,
+          customerId: CUSTOMER_ID,
+          email:     btn.dataset.customerEmail || null,
+          firstName: btn.dataset.customerFirst || null,
+          lastName:  btn.dataset.customerLast  || null,
+        }),
+      });
+
+      if (!res.ok) {
+  throw new Error(`HTTP ${res.status}`);
+}
+
+      const data = await res.json();
+
+      if (data.success) {
+        // Show success message then redirect
+        const successEl = document.getElementById(`lr-success-${SECTION_ID}`);
+        if (successEl) successEl.classList.add('show');
+        btn.textContent = {{ block.settings.enrolled_button_text | json }};
+        btn.disabled = false;
+        setTimeout(() => { window.location.href = DASHBOARD; }, 1800);
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Try again';
+      }
+    } catch(e) {
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+    }
+  });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Loyalty Register",
+  "target": "section",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Content"
+    },
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow label",
+      "default": "Loyalty Program"
+    },
+    {
+      "type": "richtext",
+      "id": "heading",
+      "label": "Heading",
+      "default": "<h2>Earn rewards on <em>every purchase</em></h2>"
+    },
+    {
+      "type": "textarea",
+      "id": "description",
+      "label": "Description",
+      "default": "Join our loyalty program and start earning points with every order. Unlock exclusive tiers and redeem rewards."
+    },
+    {
+      "type": "checkbox",
+      "id": "show_perks",
+      "label": "Show perks",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "perk_1",
+      "label": "Perk 1",
+      "default": "⭐ Earn points"
+    },
+    {
+      "type": "text",
+      "id": "perk_2",
+      "label": "Perk 2",
+      "default": "🎯 Unlock tiers"
+    },
+    {
+      "type": "text",
+      "id": "perk_3",
+      "label": "Perk 3",
+      "default": "🎁 Redeem rewards"
+    },
+    {
+      "type": "header",
+      "content": "Buttons"
+    },
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Button text (not enrolled)",
+      "default": "Join Loyalty Program"
+    },
+    {
+      "type": "text",
+      "id": "enrolled_button_text",
+      "label": "Button text (enrolled)",
+      "default": "Go to Loyalty Dashboard"
+    },
+    {
+      "type": "text",
+      "id": "login_button_text",
+      "label": "Button text (not logged in)",
+      "default": "Log in to join"
+    },
+    {
+      "type": "url",
+      "id": "dashboard_url",
+      "label": "Dashboard page URL",
+      "info": "Leave blank to use /pages/loyalty-rewards"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_secondary_button",
+      "label": "Show secondary button",
+      "default": false
+    },
+    {
+      "type": "text",
+      "id": "secondary_button_text",
+      "label": "Secondary button text",
+      "default": "Learn more"
+    },
+    {
+      "type": "url",
+      "id": "secondary_button_url",
+      "label": "Secondary button URL"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "text_alignment",
+      "label": "Text alignment",
+      "options": [
+        { "value": "left",   "label": "Left"   },
+        { "value": "center", "label": "Center" },
+        { "value": "right",  "label": "Right"  }
+      ],
+      "default": "center"
+    },
+    {
+      "type": "range",
+      "id": "content_width",
+      "label": "Content max width",
+      "min": 400,
+      "max": 1200,
+      "step": 40,
+      "unit": "px",
+      "default": 720
+    },
+    {
+      "type": "range",
+      "id": "heading_size",
+      "label": "Heading size",
+      "min": 24,
+      "max": 72,
+      "step": 2,
+      "unit": "px",
+      "default": 48
+    },
+    {
+      "type": "range",
+      "id": "description_size",
+      "label": "Description size",
+      "min": 12,
+      "max": 20,
+      "step": 1,
+      "unit": "px",
+      "default": 15
+    },
+    {
+      "type": "range",
+      "id": "padding_top",
+      "label": "Padding top",
+      "min": 0,
+      "max": 120,
+      "step": 4,
+      "unit": "px",
+      "default": 64
+    },
+    {
+      "type": "range",
+      "id": "padding_bottom",
+      "label": "Padding bottom",
+      "min": 0,
+      "max": 120,
+      "step": 4,
+      "unit": "px",
+      "default": 64
+    },
+    {
+      "type": "range",
+      "id": "padding_side",
+      "label": "Padding sides",
+      "min": 0,
+      "max": 80,
+      "step": 4,
+      "unit": "px",
+      "default": 24
+    },
+    {
+      "type": "header",
+      "content": "Colors"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent color",
+      "default": "#d4a017"
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Background color",
+      "default": "#0d0d0d"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button color",
+      "default": "#d4a017"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Button text color",
+      "default": "#0d0d0d"
+    },
+    {
+      "type": "range",
+      "id": "border_radius",
+      "label": "Button border radius",
+      "min": 0,
+      "max": 32,
+      "step": 2,
+      "unit": "px",
+      "default": 10
+    }
+  ]
+}
+{% endschema %}

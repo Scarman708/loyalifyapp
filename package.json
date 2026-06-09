@@ -1,7 +1,7 @@
 {
   "name": "loyalify-app",
   "private": true,
-  "scripts": {
+   "scripts": {
     "build": "react-router build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
