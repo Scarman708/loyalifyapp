@@ -23,7 +23,7 @@ export default function App() {
         <s-link href="/app/settings">Settings</s-link>
         {/* <s-link href="/app/customers">Customers Management</s-link> */}
         <s-link href="/app/tiers">Membership Tiers</s-link>
-        <s-link href="/app/additional">Additional page</s-link>
+        {/* <s-link href="/app/additional">Additional page</s-link> */}
       </s-app-nav>
       <Outlet />
     </AppProvider>
