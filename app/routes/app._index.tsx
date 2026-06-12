@@ -29,13 +29,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   `);
   const loyaltyPage = (await pageRes.json()).data?.pages?.nodes?.[0] ?? null;
 
-  const themeRes   = await admin.graphql(`query { themes(first: 10) { nodes { id role name } } }`);
-  const activeTheme = (await themeRes.json()).data?.themes?.nodes?.find((t: any) => t.role === "MAIN") ?? null;
+  // Theme query removed — requires read_themes scope which we dropped.
+  // Link to theme editor without specific theme ID (Shopify redirects to active theme).
+  const activeTheme = null;
 
-  // Load saved manual checks from settings metafield (stored as JSON note on LoyaltySettings)
-  const manualChecks = (settings as any)?.manualChecks
-    ? JSON.parse((settings as any).manualChecks)
-    : {};
+  // Load saved manual checks — graceful fallback if column missing (pre-migration)
+  let manualChecks: Record<string, boolean> = {};
+  try {
+    manualChecks = (settings as any)?.manualChecks
+      ? JSON.parse((settings as any).manualChecks)
+      : {};
+  } catch { manualChecks = {}; }
 
   return {
     shop: shopInfo, memberCount, hasSettings: !!settings,
@@ -55,11 +59,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const current  = existing ? (JSON.parse((existing as any).manualChecks ?? "{}")) : {};
   current[key]   = value;
 
-  await db.loyaltySettings.upsert({
-    where:  { shop },
-    create: { shop, manualChecks: JSON.stringify(current) } as any,
-    update: { manualChecks: JSON.stringify(current) } as any,
-  });
+  try {
+    await db.loyaltySettings.upsert({
+      where:  { shop },
+      create: { shop, manualChecks: JSON.stringify(current) } as any,
+      update: { manualChecks: JSON.stringify(current) } as any,
+    });
+  } catch (e) {
+    console.error("[homepage] manualChecks save failed — run migration:", e);
+  }
 
   return { ok: true };
 };
@@ -73,7 +81,7 @@ export default function Index() {
 
   const storeDomain = (shop as any).myshopifyDomain ?? "";
   const adminBase   = `https://admin.shopify.com/store/${storeDomain.replace(".myshopify.com", "")}`;
-  const themeNumId  = activeTheme?.id?.replace("gid://shopify/OnlineStoreTheme/", "") ?? "";
+  const themeNumId  = ""; // unused — theme query removed
 
   // Local state for manual checkboxes — seeded from DB
   const [checks, setChecks] = useState<Record<string, boolean>>({
@@ -118,7 +126,7 @@ export default function Index() {
       auto:   false,
       done:   checks.embed_enabled,
       title:  "Enable App Embed in theme",
-      desc:   `Open the theme editor for${activeTheme ? ` "${activeTheme.name}"` : " your active theme"}, go to App Embeds, and toggle on Loyalty Widget.`,
+      desc:   "Open the theme editor, go to App Embeds, and toggle on Loyalty Widget.",
       action: themeNumId
         ? { label: "Open App Embeds", url: `${adminBase}/themes/${themeNumId}/editor?context=apps`, external: true }
         : null,
