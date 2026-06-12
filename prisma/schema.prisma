@@ -151,8 +151,6 @@ model LoyaltySettings {
   buttonTextColor      String   @default("#0d0d0d")
   borderRadius         Int      @default(16)
   manualChecks         String?  // JSON: { embed_enabled, cta_added, earning_configured, redemption_configured }
-
-
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
