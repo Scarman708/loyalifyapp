@@ -8,13 +8,11 @@ import { isFirstOrder, awardOrderBonus } from "../services/referral.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { payload, shop, topic, admin } = await authenticate.webhook(request);
-
-  console.log(`[webhook] ${topic} received for shop: ${shop}`);
+  console.log(`[webhook] ${topic} | shop: ${shop}`);
 
   const order = payload as any;
-
   if (!order.customer?.id) {
-    console.log("[orders-paid] No customer on order, skipping.");
+    console.log("[orders-paid] No customer, skipping.");
     return new Response(null, { status: 200 });
   }
 
@@ -22,10 +20,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const orderId           = String(order.id);
   const orderName         = order.name as string;
 
-  // ── Idempotency ───────────────────────────────────────────────────────────
   const existing = await db.pointTransaction.findFirst({ where: { shop, orderId } });
   if (existing) {
-    console.log(`[orders-paid] Already processed order ${orderName}, skipping.`);
+    console.log(`[orders-paid] Already processed ${orderName}, skipping.`);
     return new Response(null, { status: 200 });
   }
 
@@ -42,16 +39,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       : parseFloat(order.subtotal_price ?? "0");
 
   const points = calculatePoints(orderAmount, customer.tier, settings);
-
   if (points <= 0) {
-    console.log(`[orders-paid] Order ${orderName} calculated 0 points, skipping.`);
+    console.log(`[orders-paid] ${orderName} = 0 pts, skipping.`);
     return new Response(null, { status: 200 });
   }
 
-  // ── Check if this is referee's first order (before creating tx) ───────────
+  // Check first order BEFORE creating the transaction
   const firstOrder = await isFirstOrder(shop, customer.id);
 
-  // ── COD check ─────────────────────────────────────────────────────────────
   const isCOD = order.fulfillment_status === "fulfilled";
 
   if (isCOD) {
@@ -61,21 +56,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         data: { lifetimePoints: { increment: points }, points: { increment: points } },
       }),
       db.pointTransaction.create({
-        data: {
-          shop, customerId: customer.id, type: "earn", points, status: "active",
-          orderId, orderName,
-          note: `Order ${orderName} — ${points} pts (COD, activated immediately)`,
-        },
+        data: { shop, customerId: customer.id, type: "earn", points, status: "active",
+          orderId, orderName, note: `Order ${orderName} — ${points} pts (COD)` },
       }),
     ]);
-
     const refreshed = await db.loyaltyCustomer.findUnique({ where: { id: customer.id } });
     if (refreshed) {
       await evaluateAndUpdateTier({ id: refreshed.id, shopifyCustomerId: refreshed.shopifyCustomerId,
         shop: refreshed.shop, lifetimePoints: refreshed.lifetimePoints, tier: refreshed.tier }, admin);
     }
-
-    console.log(`[orders-paid] COD — activated ${points} pts for ${shopifyCustomerId}`);
+    console.log(`[orders-paid] COD activated ${points} pts for ${shopifyCustomerId}`);
   } else {
     await db.$transaction([
       db.loyaltyCustomer.update({
@@ -83,33 +73,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         data: { lifetimePoints: { increment: points } },
       }),
       db.pointTransaction.create({
-        data: {
-          shop, customerId: customer.id, type: "earn", points, status: "pending",
-          orderId, orderName,
-          note: `Order ${orderName} — ${points} pts pending fulfilment`,
-        },
+        data: { shop, customerId: customer.id, type: "earn", points, status: "pending",
+          orderId, orderName, note: `Order ${orderName} — ${points} pts pending fulfilment` },
       }),
     ]);
-
-    console.log(`[orders-paid] Awarded ${points} pending pts to ${shopifyCustomerId} for order ${orderName}`);
+    console.log(`[orders-paid] ${points} pending pts for ${shopifyCustomerId}`);
   }
 
-  // ── Referral order bonus (first order only) ───────────────────────────────
+  // Referral order bonus — first order only, passes admin for metafield sync
   if (firstOrder) {
     try {
-      const referral = await db.referralRelationship.findUnique({
-        where: { refereeId: customer.id },
-      });
-
+      const referral = await db.referralRelationship.findUnique({ where: { refereeId: customer.id } });
       if (referral && !referral.orderBonusPaid) {
         await awardOrderBonus(
           shop,
           { id: referral.id, referrerId: referral.referrerId, refereeId: referral.refereeId },
           points,
           settings.referralReferrerPct,
-          
+          settings.referralRefereePct,
+          admin,   // ← now passed through
         );
-        console.log(`[orders-paid] Referral order bonus awarded for referral ${referral.id}`);
       }
     } catch (refErr) {
       console.error("[orders-paid] Referral bonus error (non-fatal):", refErr);

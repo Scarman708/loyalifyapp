@@ -16,12 +16,8 @@ export async function loader() {
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
-  if (request.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
-  }
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (request.method !== "POST") return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: corsHeaders });
 
   try {
     const body = await request.json();
@@ -31,7 +27,6 @@ export async function action({ request }: ActionFunctionArgs) {
       return new Response(JSON.stringify({ error: "shop and customerId are required" }), { status: 400, headers: corsHeaders });
     }
 
-    // Check already enrolled
     const existing = await db.loyaltyCustomer.findUnique({
       where: { shop_shopifyCustomerId: { shop, shopifyCustomerId: String(customerId) } },
     });
@@ -39,35 +34,25 @@ export async function action({ request }: ActionFunctionArgs) {
       return new Response(JSON.stringify({ success: true, alreadyEnrolled: true, customer: existing }), { status: 200, headers: corsHeaders });
     }
 
-    // Enroll customer
     const customer = await getOrCreateLoyaltyCustomer(shop, String(customerId), { email, firstName, lastName });
 
-    // ── Handle referral ───────────────────────────────────────────────────────
+    // Handle referral — needs admin client for metafield sync
     if (referralCode) {
       try {
+        const { unauthenticated } = await import("../shopify.server");
+        const { admin } = await unauthenticated.admin(shop);
+
         const referrer = await findCustomerByReferralCode(shop, String(referralCode));
-
         if (referrer && referrer.id !== customer.id) {
-          // Check not already referred
-          const existingReferral = await db.referralRelationship.findUnique({
-            where: { refereeId: customer.id },
-          });
-
+          const existingReferral = await db.referralRelationship.findUnique({ where: { refereeId: customer.id } });
           if (!existingReferral) {
             const settings = await getLoyaltySettings(shop);
-            await awardSignupBonus(
-              shop,
-              referrer.id,
-              customer.id,
-              String(referralCode),
-              settings.referralSignupBonus,
-            );
-            console.log(`[api.loyalty-signup] Referral recorded: ${referrer.id} → ${customer.id}`);
+            await awardSignupBonus(shop, referrer.id, customer.id, String(referralCode), settings.referralSignupBonus, admin);
+            console.log(`[api.loyalty-signup] Referral: ${referrer.id} → ${customer.id}`);
           }
         }
       } catch (refErr) {
-        // Non-fatal — enrollment still succeeds
-        console.error("[api.loyalty-signup] Referral error:", refErr);
+        console.error("[api.loyalty-signup] Referral error (non-fatal):", refErr);
       }
     }
 
