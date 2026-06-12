@@ -5,15 +5,35 @@ name = "Loyalify App"
 application_url = "https://loyalifyapp.onrender.com"
 embedded = true
 
+
 [build]
 automatically_update_urls_on_dev = true
-
+ 
 [webhooks]
 api_version = "2026-07"
+ 
+  [[webhooks.subscriptions]]
+  topics = ["orders/paid"]
+  uri    = "/webhooks/orders-paid"
+ 
+  [[webhooks.subscriptions]]
+  topics = ["orders/fulfilled"]
+  uri    = "/webhooks/orders-fulfilled"
+ 
+  [[webhooks.subscriptions]]
+  topics = ["orders/cancelled"]
+  uri    = "/webhooks/orders-cancelled"
+ 
 
 [access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_customers,read_customers,write_orders,read_orders,read_products,write_products,write_themes,write_content,read_themes,write_discounts"
-
+# Minimal scopes — only what the app actually uses
+# write_customers: sync loyalty.points + loyalty.tier metafields
+# read_customers:  look up customers
+# write_orders:    not used directly but required for order webhook context
+# read_orders:     read order data in webhooks
+# write_content:   create Loyalty Rewards page on install
+# write_discounts: create discount codes for point redemption
+scopes = "write_customers,read_customers,read_orders,write_content,write_discounts"
+ 
 [auth]
 redirect_urls = [ "https://loyalifyapp.onrender.com/api/auth" ]

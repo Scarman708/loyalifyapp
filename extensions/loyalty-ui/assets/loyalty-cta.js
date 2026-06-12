@@ -18,7 +18,41 @@
     style.id = "loyalty-cta-styles";
     style.textContent = `
 
+.lc-input-wrap {
+  margin-bottom: 20px;
+}
 
+.lc-input-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lc-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.lc-input:focus {
+  border-color: #d4a017;
+}
+
+.lc-input::placeholder {
+  color: rgba(255,255,255,0.35);
+}
       .lc-root {
         font-family: 'DM Sans', sans-serif;
         max-width: 640px;
@@ -226,10 +260,26 @@
 
           ${CUSTOMER_ID ? `
             <div id="lc-action">
-              <button class="lc-btn" id="lc-join-btn">
-                <span id="lc-btn-label">${buttonText}</span>
-              </button>
-            </div>
+
+  <div class="lc-input-wrap">
+    <label class="lc-input-label">
+      Referral Code <span style="font-weight:400;opacity:.6;">(optional)</span>
+    </label>
+
+    <input
+      id="lc-referral-input"
+      class="lc-input"
+      type="text"
+      placeholder="Enter referral code"
+      value="${REF_CODE || ""}"
+    />
+  </div>
+
+  <button class="lc-btn" id="lc-join-btn">
+    <span id="lc-btn-label">${buttonText}</span>
+  </button>
+
+</div>
             <div class="lc-success" id="lc-success">
               <div class="lc-success-icon">✓</div>
               <div class="lc-success-title">You're enrolled!</div>
@@ -270,7 +320,8 @@
           window.location.href = DASHBOARD_URL;
           return;
         }
-
+const referralCode =
+  document.getElementById("lc-referral-input")?.value.trim() || null;
         // Not enrolled — sign up
         const signupRes = await fetch(`${APP_URL}/api/loyalty-signup`, {
           method: "POST",
@@ -281,7 +332,7 @@
             email: window.__LOYALTY_CUSTOMER_EMAIL__ || null,
             firstName: window.__LOYALTY_CUSTOMER_FIRST_NAME__ || null,
             lastName: window.__LOYALTY_CUSTOMER_LAST_NAME__ || null,
-            referralCode: REF_CODE,
+            referralCode: referralCode,
           }),
         });
 
