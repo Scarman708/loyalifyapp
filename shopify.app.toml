@@ -24,6 +24,9 @@ api_version = "2026-07"
   topics = ["orders/cancelled"]
   uri    = "/webhooks/orders-cancelled"
  
+ [[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "https://app.example.com/webhooks"
 
 [access_scopes]
 # Minimal scopes — only what the app actually uses
