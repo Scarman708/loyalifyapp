@@ -26,7 +26,7 @@ api_version = "2026-07"
  
  [[webhooks.subscriptions]]
 compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
-uri = "https://app.example.com/webhooks"
+uri = "https://loyalifyapp.onrender.com/webhooks"
 
 [access_scopes]
 # Minimal scopes — only what the app actually uses
