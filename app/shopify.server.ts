@@ -24,15 +24,15 @@ const shopify = shopifyApp({
   webhooks: {
     ORDERS_PAID: {
       deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/orders-paid",
+      callbackUrl: "/webhooks",
     },
     ORDERS_FULFILLED: {
       deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/orders-fulfilled",
+      callbackUrl: "/webhooks",
     },
     ORDERS_CANCELLED: {
       deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/orders-cancelled",
+      callbackUrl: "/webhooks",
     },
   },
   hooks: {
