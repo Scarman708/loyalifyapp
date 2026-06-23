@@ -2,7 +2,7 @@ const PAGE_TITLE = "Loyalty Rewards";
 const APP_URL    = process.env.SHOPIFY_APP_URL || "";
 
 function buildPageBody(): string {
-  return `<div id="loyalty-widget-root" data-app-url="${APP_URL}"></div>`;
+  return `<div id="loyalty-widget-root"></div>`;
 }
 
 export async function setupLoyaltyPage(admin: any): Promise<void> {

@@ -1,0 +1,28 @@
+{% comment %}
+  Loyalty App Embed Block
+  Enable in Theme → Customize → App Embeds.
+  Runs on every page. Injects customer context and loads the widget script.
+{% endcomment %}
+
+<script>
+  window.__LOYALTY_APP_URL__ = {{ shop.metafields.loyalty.app_url | json }};
+  window.__LOYALTY_SHOP__    = {{ shop.permanent_domain | json }};
+
+  {% if customer %}
+    window.__LOYALTY_CUSTOMER_ID__         = {{ customer.id | json }};
+    window.__LOYALTY_CUSTOMER_EMAIL__      = {{ customer.email | json }};
+    window.__LOYALTY_CUSTOMER_FIRST_NAME__ = {{ customer.first_name | json }};
+    window.__LOYALTY_CUSTOMER_LAST_NAME__  = {{ customer.last_name | json }};
+  {% else %}
+    window.__LOYALTY_CUSTOMER_ID__ = null;
+  {% endif %}
+</script>
+
+{{ 'loyalty-widget.js' | asset_url | script_tag }}
+
+{% schema %}
+{
+  "name": "Loyalty Widget",
+  "target": "body"
+}
+{% endschema %}
