@@ -13,14 +13,20 @@ type TierName = "Bronze" | "Silver" | "Gold";
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
   const [allCustomersRaw, transactions30d, recentRaw] = await Promise.all([
     db.loyaltyCustomer.findMany({
-      orderBy: { lifetimePoints: "desc" },
+      where: {
+        shop,
+      },
+      orderBy: {
+        lifetimePoints: "desc",
+      },
       select: {
         id: true,
         shopifyCustomerId: true,
@@ -33,6 +39,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         createdAt: true,
         // Include transactions and vouchers so the modal has real data
         transactions: {
+          where: {
+            shop,
+          },
           orderBy: { createdAt: "desc" },
           select: {
             id: true, type: true, points: true, note: true,
@@ -40,6 +49,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           },
         },
         vouchers: {
+          where: {
+    shop,
+  },
           select: {
             id: true, code: true, discountAmount: true,
             pointsUsed: true, status: true, expiresAt: true,
@@ -48,11 +60,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       },
     }),
     db.pointTransaction.findMany({
-      where: { createdAt: { gte: thirtyDaysAgo } },
+      where: { shop, createdAt: { gte: thirtyDaysAgo } },
       select: { type: true, points: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
     db.pointTransaction.findMany({
+      where: {
+        shop,
+      },
       take: 10,
       orderBy: { createdAt: "desc" },
       select: {
@@ -62,14 +77,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }),
   ]);
 
-  const totalMembers       = allCustomersRaw.length;
-  const newMembers30d      = allCustomersRaw.filter((c) => c.createdAt >= thirtyDaysAgo).length;
+  const totalMembers = allCustomersRaw.length;
+  const newMembers30d = allCustomersRaw.filter((c) => c.createdAt >= thirtyDaysAgo).length;
   const outstandingBalance = allCustomersRaw.reduce((s, c) => s + c.points, 0);
 
   let pointsIssued30d = 0, pointsRedeemed30d = 0;
   for (const t of transactions30d) {
-    if (t.type === "earn" || t.type === "adjust") pointsIssued30d   += t.points;
-    else                                           pointsRedeemed30d += t.points;
+    if (t.type === "earn" || t.type === "adjust") pointsIssued30d += t.points;
+    else pointsRedeemed30d += t.points;
   }
 
   const topCustomers = allCustomersRaw.slice(0, 5).map((c) => ({
@@ -86,8 +101,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   for (const t of transactions30d) {
     const key = t.createdAt.toISOString().slice(0, 10);
     const entry = dayMap.get(key); if (!entry) continue;
-    if (t.type === "earn" || t.type === "adjust") entry.issued   += t.points;
-    else                                           entry.redeemed += t.points;
+    if (t.type === "earn" || t.type === "adjust") entry.issued += t.points;
+    else entry.redeemed += t.points;
   }
   const dailyStats = Array.from(dayMap.entries()).map(([date, v]) => ({ date, ...v }));
 
@@ -97,7 +112,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     tierCounts[t]++;
   }
   const tierStats = [
-    { tier: "Gold"   as TierName, count: tierCounts.Gold,   threshold: "≥ 2,000 pts" },
+    { tier: "Gold" as TierName, count: tierCounts.Gold, threshold: "≥ 2,000 pts" },
     { tier: "Silver" as TierName, count: tierCounts.Silver, threshold: "500–1,999 pts" },
     { tier: "Bronze" as TierName, count: tierCounts.Bronze, threshold: "< 500 pts" },
   ];
@@ -138,7 +153,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
-  const raw  = await request.json();
+  const raw = await request.json();
   const { intent, customerId, points, note } = raw;
 
   const customer = await db.loyaltyCustomer.findUnique({ where: { id: customerId } });
@@ -154,8 +169,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         data: { points: { increment: pts }, lifetimePoints: { increment: pts } },
       }),
       db.pointTransaction.create({
-        data: { shop, customerId, type: "adjust", points: pts, status: "active",
-          note: note || `Manual adjustment by merchant (+${pts} pts)` },
+        data: {
+          shop, customerId, type: "adjust", points: pts, status: "active",
+          note: note || `Manual adjustment by merchant (+${pts} pts)`
+        },
       }),
     ]);
     const updated = await db.loyaltyCustomer.findUnique({ where: { id: customerId } });
@@ -164,8 +181,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const { syncPointsMetafield } = await import("../services/points.server");
         const { evaluateAndUpdateTier } = await import("../services/tierService");
         await syncPointsMetafield(admin, updated.shopifyCustomerId, updated.points);
-        await evaluateAndUpdateTier({ id: updated.id, shopifyCustomerId: updated.shopifyCustomerId,
-          shop: updated.shop, lifetimePoints: updated.lifetimePoints, tier: updated.tier }, admin);
+        await evaluateAndUpdateTier({
+          id: updated.id, shopifyCustomerId: updated.shopifyCustomerId,
+          shop: updated.shop, lifetimePoints: updated.lifetimePoints, tier: updated.tier
+        }, admin);
       } catch (e) { console.error("[analytics/action] sync error:", e); }
     }
     return { ok: true, intent, pts, customerId };
@@ -176,8 +195,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await db.$transaction([
       db.loyaltyCustomer.update({ where: { id: customerId }, data: { points: { decrement: pts } } }),
       db.pointTransaction.create({
-        data: { shop, customerId, type: "adjust", points: -pts, status: "active",
-          note: note || `Manual deduction by merchant (−${pts} pts)` },
+        data: {
+          shop, customerId, type: "adjust", points: -pts, status: "active",
+          note: note || `Manual deduction by merchant (−${pts} pts)`
+        },
       }),
     ]);
     const updated = await db.loyaltyCustomer.findUnique({ where: { id: customerId } });
@@ -198,16 +219,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 const TIER_STYLES: Record<string, { bg: string; text: string; border: string; bar: string }> = {
   bronze: { bg: "#fdf0e6", text: "#b85c1a", border: "#f0c090", bar: "#D85A30" },
   silver: { bg: "#f0f2f5", text: "#4a5568", border: "#c0c8d8", bar: "#5F5E5A" },
-  gold:   { bg: "#fefae6", text: "#92630a", border: "#f0d060", bar: "#BA7517" },
+  gold: { bg: "#fefae6", text: "#92630a", border: "#f0d060", bar: "#BA7517" },
 };
 const TIER_ICONS: Record<string, string> = { bronze: "🥉", silver: "🥈", gold: "🥇" };
 
 function TierBadge({ tier }: { tier: string }) {
   const c = TIER_STYLES[tier] ?? TIER_STYLES.bronze;
   return (
-    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+    <span style={{
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
       borderRadius: "999px", padding: "2px 10px", fontSize: "12px", fontWeight: 600,
-      textTransform: "capitalize", whiteSpace: "nowrap" }}>
+      textTransform: "capitalize", whiteSpace: "nowrap"
+    }}>
       {TIER_ICONS[tier] ?? "🥉"} {tier}
     </span>
   );
@@ -217,10 +240,10 @@ function fmtNum(n: number) { return n.toLocaleString(); }
 
 function relativeTime(date: any) {
   const diff = Math.floor((Date.now() - new Date(date).getTime()) / 60000);
-  if (diff < 1)  return "just now";
+  if (diff < 1) return "just now";
   if (diff < 60) return `${diff}m ago`;
   const h = Math.floor(diff / 60);
-  if (h < 24)    return `${h}h ago`;
+  if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
 
@@ -237,12 +260,12 @@ function formatDate(d: any) {
 }
 
 function txBadge(type: string, status: string) {
-  if (status === "pending")  return { label: "Pending",  bg: "#fef3c7", color: "#92400e" };
-  if (status === "voided")   return { label: "Voided",   bg: "#fee2e2", color: "#991b1b" };
+  if (status === "pending") return { label: "Pending", bg: "#fef3c7", color: "#92400e" };
+  if (status === "voided") return { label: "Voided", bg: "#fee2e2", color: "#991b1b" };
   if (status === "deducted") return { label: "Deducted", bg: "#fee2e2", color: "#991b1b" };
-  if (type === "earn")       return { label: "Earned",   bg: "#d1fae5", color: "#065f46" };
-  if (type === "redeem")     return { label: "Redeemed", bg: "#ede9fe", color: "#5b21b6" };
-  if (type === "adjust")     return { label: "Adjusted", bg: "#e0f2fe", color: "#0369a1" };
+  if (type === "earn") return { label: "Earned", bg: "#d1fae5", color: "#065f46" };
+  if (type === "redeem") return { label: "Redeemed", bg: "#ede9fe", color: "#5b21b6" };
+  if (type === "adjust") return { label: "Adjusted", bg: "#e0f2fe", color: "#0369a1" };
   return { label: type, bg: "#f3f4f6", color: "#374151" };
 }
 
@@ -259,13 +282,13 @@ function CustomerModal({
   onClose: () => void;
   fetcher: any;
 }) {
-  const [tab,        setTab]        = useState<"overview" | "transactions" | "vouchers">("overview");
-  const [adjustTab,  setAdjustTab]  = useState<"add" | "deduct">("add");
-  const [adjustPts,  setAdjustPts]  = useState("");
+  const [tab, setTab] = useState<"overview" | "transactions" | "vouchers">("overview");
+  const [adjustTab, setAdjustTab] = useState<"add" | "deduct">("add");
+  const [adjustPts, setAdjustPts] = useState("");
   const [adjustNote, setAdjustNote] = useState("");
 
   const isSaving = fetcher.state !== "idle";
-  const result   = fetcher.data as any;
+  const result = fetcher.data as any;
   const myResult = result?.customerId === customer.id ? result : null;
 
   // Optimistic balance
@@ -321,7 +344,7 @@ function CustomerModal({
         <div style={{ display: "flex", gap: "0", borderBottom: "1px solid #efefef" }}>
           {[
             { label: "Available", value: fmtNum(currentPts), accent: true },
-            { label: "Lifetime",  value: fmtNum(customer.lifetimePoints) },
+            { label: "Lifetime", value: fmtNum(customer.lifetimePoints) },
             { label: "Member since", value: formatDate(customer.createdAt) },
           ].map(({ label, value, accent }) => (
             <div key={label} style={{ flex: 1, padding: "14px 16px", borderRight: "1px solid #efefef" }}>
@@ -411,8 +434,10 @@ function CustomerModal({
                         borderTop: i === 0 ? "none" : "1px solid #f5f5f5",
                         background: i % 2 === 0 ? "#fff" : "#fafafa",
                       }}>
-                        <span style={{ background: badge.bg, color: badge.color, borderRadius: "999px",
-                          padding: "2px 8px", fontSize: "11px", fontWeight: 600, flexShrink: 0 }}>
+                        <span style={{
+                          background: badge.bg, color: badge.color, borderRadius: "999px",
+                          padding: "2px 8px", fontSize: "11px", fontWeight: 600, flexShrink: 0
+                        }}>
                           {badge.label}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -458,13 +483,13 @@ function CustomerModal({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const data    = useLoaderData<typeof loader>();
+  const data = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
 
-  const [searchQ,          setSearchQ]          = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [detailCustomer,   setDetailCustomer]   = useState<any>(null);
-  const [page,             setPage]             = useState(0);
+  const [detailCustomer, setDetailCustomer] = useState<any>(null);
+  const [page, setPage] = useState(0);
 
   const PAGE_SIZE = 10;
 
@@ -479,7 +504,7 @@ export default function AnalyticsPage() {
     );
   });
 
-  const totalPages    = Math.ceil(filtered.length / PAGE_SIZE);
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageCustomers = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   // Opens the modal with the full customer object (transactions + vouchers already included from loader)
@@ -490,8 +515,8 @@ export default function AnalyticsPage() {
 
   const totalForTier = data.tierStats.reduce((s, t) => s + t.count, 0) || 1;
 
-  const chartDays     = data.dailyStats.filter((_, i) => i % 2 === 0).map((d) => { const [,m,day] = d.date.split("-"); return `${parseInt(m)}/${parseInt(day)}`; });
-  const chartIssued   = data.dailyStats.filter((_, i) => i % 2 === 0).map((d) => d.issued);
+  const chartDays = data.dailyStats.filter((_, i) => i % 2 === 0).map((d) => { const [, m, day] = d.date.split("-"); return `${parseInt(m)}/${parseInt(day)}`; });
+  const chartIssued = data.dailyStats.filter((_, i) => i % 2 === 0).map((d) => d.issued);
   const chartRedeemed = data.dailyStats.filter((_, i) => i % 2 === 0).map((d) => d.redeemed);
 
   return (
@@ -501,9 +526,9 @@ export default function AnalyticsPage() {
       <s-section heading="Last 30 days">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
           {[
-            { label: "Total members",       value: fmtNum(data.totalMembers),       sub: `+${data.newMembers30d} new this month` },
-            { label: "Points issued",       value: fmtNum(data.pointsIssued30d),    sub: "This period" },
-            { label: "Points redeemed",     value: fmtNum(data.pointsRedeemed30d),  sub: "This period" },
+            { label: "Total members", value: fmtNum(data.totalMembers), sub: `+${data.newMembers30d} new this month` },
+            { label: "Points issued", value: fmtNum(data.pointsIssued30d), sub: "This period" },
+            { label: "Points redeemed", value: fmtNum(data.pointsRedeemed30d), sub: "This period" },
             { label: "Outstanding balance", value: fmtNum(data.outstandingBalance), sub: "Across all members" },
           ].map(({ label, value, sub }) => (
             <s-card key={label}>
@@ -524,7 +549,7 @@ export default function AnalyticsPage() {
             <canvas id="loyaltyChart" role="img" aria-label="Daily points chart" />
           </div>
           <div style={{ display: "flex", gap: "16px", marginTop: "12px" }}>
-            {[["#97C459","Issued"],["#F09595","Redeemed"]].map(([bg, label]) => (
+            {[["#97C459", "Issued"], ["#F09595", "Redeemed"]].map(([bg, label]) => (
               <span key={label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
                 <span style={{ width: "10px", height: "10px", borderRadius: "2px", background: bg, display: "inline-block" }} />
                 {label}
@@ -590,7 +615,7 @@ export default function AnalyticsPage() {
           <s-stack direction="block" gap="large-400">
             {data.tierStats.map(({ tier, count, threshold }) => {
               const pct = Math.round((count / totalForTier) * 100);
-              const s   = TIER_STYLES[tier.toLowerCase()] ?? TIER_STYLES.bronze;
+              const s = TIER_STYLES[tier.toLowerCase()] ?? TIER_STYLES.bronze;
               return (
                 <div key={tier}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
@@ -623,9 +648,11 @@ export default function AnalyticsPage() {
             </span>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 120px 120px 160px", gap: "8px",
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 160px 120px 120px 160px", gap: "8px",
             padding: "8px 12px", background: "#f9f9f9", borderRadius: "6px", marginBottom: "4px",
-            fontSize: "11px", fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            fontSize: "11px", fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em"
+          }}>
             <div>Customer</div>
             <div style={{ textAlign: "center" }}>Tier</div>
             <div style={{ textAlign: "right" }}>Available</div>
@@ -640,7 +667,8 @@ export default function AnalyticsPage() {
           ) : pageCustomers.map((c, i) => {
             const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || "No name";
             return (
-              <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 160px 120px 120px 160px",
+              <div key={c.id} style={{
+                display: "grid", gridTemplateColumns: "1fr 160px 120px 120px 160px",
                 gap: "8px", padding: "10px 12px", alignItems: "center",
                 borderTop: "1px solid #f0f0f0",
                 background: selectedCustomer?.id === c.id ? "#f0f4ff" : "transparent",
@@ -655,14 +683,18 @@ export default function AnalyticsPage() {
                 <div style={{ display: "flex", gap: "6px", justifyContent: "center" }}>
                   <button
                     onClick={() => openDetail(c)}
-                    style={{ padding: "5px 10px", fontSize: "12px", fontWeight: 600, borderRadius: "5px",
-                      border: "1px solid #d4a017", background: "#fefae6", color: "#92630a", cursor: "pointer" }}>
+                    style={{
+                      padding: "5px 10px", fontSize: "12px", fontWeight: 600, borderRadius: "5px",
+                      border: "1px solid #d4a017", background: "#fefae6", color: "#92630a", cursor: "pointer"
+                    }}>
                     ✏️ Adjust
                   </button>
                   <button
                     onClick={() => openDetail(c)}
-                    style={{ padding: "5px 10px", fontSize: "12px", fontWeight: 600, borderRadius: "5px",
-                      border: "1px solid #c7d7ff", background: "#f0f4ff", color: "#1d4ed8", cursor: "pointer" }}>
+                    style={{
+                      padding: "5px 10px", fontSize: "12px", fontWeight: 600, borderRadius: "5px",
+                      border: "1px solid #c7d7ff", background: "#f0f4ff", color: "#1d4ed8", cursor: "pointer"
+                    }}>
                     👁 Details
                   </button>
                 </div>

@@ -1,18 +1,18 @@
 (function () {
   "use strict";
 
-  const _root      = document.getElementById("loyalty-widget-root");
-  const APP_URL    = window.__LOYALTY_APP_URL__ || (_root && _root.dataset.appUrl) || "";
-  const SHOP       = window.__LOYALTY_SHOP__    || (Shopify && Shopify.shop) || "";
+  const _root = document.getElementById("loyalty-widget-root");
+  const APP_URL = window.__LOYALTY_APP_URL__ || (_root && _root.dataset.appUrl) || "";
+  const SHOP = window.__LOYALTY_SHOP__ || (Shopify && Shopify.shop) || "";
   const CUSTOMER_ID = window.__LOYALTY_CUSTOMER_ID__ || null;
-// ✅ ADD THIS — read referral code from ?ref= URL param once on load
-const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
+  // ✅ ADD THIS — read referral code from ?ref= URL param once on load
+  const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
 
   const TIER_ICONS = { bronze: "🥉", silver: "🥈", gold: "🥇" };
-  const TIER_HERO  = {
+  const TIER_HERO = {
     bronze: { bg: "#f5e6d3", accent: "#c8813a" },
     silver: { bg: "#e8edf2", accent: "#8899aa" },
-    gold:   { bg: "#fdf3d0", accent: "#d4a017" },
+    gold: { bg: "#fdf3d0", accent: "#d4a017" },
   };
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -21,10 +21,18 @@ const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
     const style = document.createElement("style");
     style.id = "loyalty-widget-styles";
     style.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600&display=swap');
-
+/* Custom redemption input */
+.lw-custom-redeem { margin-top:14px; border-top:1px solid #f0f0f0; padding-top:14px; }
+.lw-custom-redeem-label { font-size:12px; font-weight:600; color:rgba(0,0,0,0.45); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; }
+.lw-custom-redeem-row { display:flex; gap:8px; align-items:center; }
+.lw-custom-input { flex:1; padding:10px 12px; border:1.5px solid #e8e8e8; border-radius:8px; font-size:14px; font-family:'DM Sans',sans-serif; outline:none; transition:border-color 0.15s; }
+.lw-custom-input:focus { border-color:var(--lw-accent); }
+.lw-custom-input.error { border-color:#b91c1c; }
+.lw-custom-submit { padding:10px 18px; border-radius:8px; border:none; background:var(--lw-accent); color:var(--lw-btn-text,#0d0d0d); font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:opacity 0.15s; }
+.lw-custom-submit:hover { opacity:0.88; }
+.lw-custom-hint { font-size:11px; color:rgba(0,0,0,0.4); margin-top:5px; }
+.lw-custom-hint.err { color:#b91c1c; }
       .lw-root {
-        font-family: 'DM Sans', sans-serif;
         --lw-radius:   16px;
         --lw-shadow:   0 4px 24px rgba(0,0,0,0.08);
         --lw-accent:   #d4a017;
@@ -147,32 +155,32 @@ const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
     try {
       const res = await fetch(`${APP_URL}/api/loyalty-style?shop=${encodeURIComponent(SHOP)}`);
       if (!res.ok) return;
-      const s   = await res.json();
+      const s = await res.json();
       const root = document.getElementById("loyalty-widget-root");
       if (!root) return;
-      if (s.accentColor)          root.style.setProperty("--lw-accent",   s.accentColor);
-      if (s.bgColor)              root.style.setProperty("--lw-bg",        s.bgColor);
-      if (s.textColor)            root.style.setProperty("--lw-text",      s.textColor);
-      if (s.buttonColor)          root.style.setProperty("--lw-btn-bg",    s.buttonColor);
-      if (s.buttonTextColor)      root.style.setProperty("--lw-btn-text",  s.buttonTextColor);
-      if (s.borderRadius != null) root.style.setProperty("--lw-radius",    `${s.borderRadius}px`);
-    } catch(e) {}
+      if (s.accentColor) root.style.setProperty("--lw-accent", s.accentColor);
+      if (s.bgColor) root.style.setProperty("--lw-bg", s.bgColor);
+      if (s.textColor) root.style.setProperty("--lw-text", s.textColor);
+      if (s.buttonColor) root.style.setProperty("--lw-btn-bg", s.buttonColor);
+      if (s.buttonTextColor) root.style.setProperty("--lw-btn-text", s.buttonTextColor);
+      if (s.borderRadius != null) root.style.setProperty("--lw-radius", `${s.borderRadius}px`);
+    } catch (e) { }
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function formatDate(iso) {
-    return new Date(iso).toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" });
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   }
   function formatExpiry(iso) {
-    return new Date(iso).toLocaleDateString(undefined, { month:"short", day:"numeric" });
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
   function txIcon(type, status) {
-    if (status === "pending")  return { emoji:"⏳", bg:"#fef3c7" };
-    if (status === "voided" || status === "deducted") return { emoji:"↩️", bg:"#fee2e2" };
-    if (type === "earn")   return { emoji:"⭐", bg:"#d1fae5" };
-    if (type === "redeem") return { emoji:"🎟️", bg:"#ede9fe" };
-    if (type === "adjust") return { emoji:"✏️", bg:"#e0e7ff" };
-    return { emoji:"📋", bg:"#f3f4f6" };
+    if (status === "pending") return { emoji: "⏳", bg: "#fef3c7" };
+    if (status === "voided" || status === "deducted") return { emoji: "↩️", bg: "#fee2e2" };
+    if (type === "earn") return { emoji: "⭐", bg: "#d1fae5" };
+    if (type === "redeem") return { emoji: "🎟️", bg: "#ede9fe" };
+    if (type === "adjust") return { emoji: "✏️", bg: "#e0e7ff" };
+    return { emoji: "📋", bg: "#f3f4f6" };
   }
   function txPointsClass(type, status) {
     if (status === "pending") return "pending";
@@ -180,17 +188,17 @@ const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
     return type === "earn" ? "earn" : type === "redeem" ? "redeem" : "";
   }
   function txPointsLabel(type, status, points) {
-    if (status === "voided")   return `−${Math.abs(points)} (void)`;
+    if (status === "voided") return `−${Math.abs(points)} (void)`;
     if (status === "deducted") return `−${Math.abs(points)}`;
-    if (status === "pending")  return `+${points} (pending)`;
-    if (type === "earn")       return `+${points}`;
-    if (type === "redeem")     return `−${Math.abs(points)}`;
+    if (status === "pending") return `+${points} (pending)`;
+    if (type === "earn") return `+${points}`;
+    if (type === "redeem") return `−${Math.abs(points)}`;
     return `${points > 0 ? "+" : ""}${points}`;
   }
   function txDesc(tx) {
-    if (tx.note)      return tx.note;
+    if (tx.note) return tx.note;
     if (tx.orderName) return `Order ${tx.orderName}`;
-    if (tx.type === "earn")   return "Points earned";
+    if (tx.type === "earn") return "Points earned";
     if (tx.type === "redeem") return "Points redeemed";
     if (tx.type === "adjust") return "Manual adjustment";
     return "Transaction";
@@ -209,11 +217,11 @@ const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
   }
 
   // ── Render: Signup ─────────────────────────────────────────────────────────
- // ── Render: Signup ─────────────────────────────────────────────────────────
-function renderSignup(container, onEnrolled) {
-  const refCode = new URLSearchParams(window.location.search).get("ref") || "";
+  // ── Render: Signup ─────────────────────────────────────────────────────────
+  function renderSignup(container, onEnrolled) {
+    const refCode = new URLSearchParams(window.location.search).get("ref") || "";
 
-  container.innerHTML = `
+    container.innerHTML = `
     <div class="lw-root">
       <div class="lw-signup">
         <div class="lw-signup-badge">✦ New — Loyalty Program</div>
@@ -249,44 +257,44 @@ function renderSignup(container, onEnrolled) {
       </div>
     </div>`;
 
-  // Focus style on input
-  const input = document.getElementById("lw-referral-input");
-  input.addEventListener("focus", function () {
-    this.style.borderColor = "var(--lw-accent)";
-  });
-  input.addEventListener("blur", function () {
-    this.style.borderColor = "color-mix(in srgb,var(--lw-text) 18%,transparent)";
-  });
+    // Focus style on input
+    const input = document.getElementById("lw-referral-input");
+    input.addEventListener("focus", function () {
+      this.style.borderColor = "var(--lw-accent)";
+    });
+    input.addEventListener("blur", function () {
+      this.style.borderColor = "color-mix(in srgb,var(--lw-text) 18%,transparent)";
+    });
 
-  document.getElementById("lw-join-btn").addEventListener("click", async function () {
-    const btn = this;
-    const referralCode = document.getElementById("lw-referral-input").value.trim() || null;
+    document.getElementById("lw-join-btn").addEventListener("click", async function () {
+      const btn = this;
+      const referralCode = document.getElementById("lw-referral-input").value.trim() || null;
 
-    btn.disabled = true; btn.textContent = "Joining...";
-    try {
-      const res = await fetch(`${APP_URL}/api/loyalty-signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          shop:         SHOP,
-          customerId:   CUSTOMER_ID,
-          email:        window.__LOYALTY_CUSTOMER_EMAIL__      || null,
-          firstName:    window.__LOYALTY_CUSTOMER_FIRST_NAME__ || null,
-          lastName:     window.__LOYALTY_CUSTOMER_LAST_NAME__  || null,
-          referralCode: referralCode,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) { onEnrolled(); }
-      else { btn.disabled = false; btn.textContent = "Try again"; }
-    } catch(e) { btn.disabled = false; btn.textContent = "Try again"; }
-  });
-}
+      btn.disabled = true; btn.textContent = "Joining...";
+      try {
+        const res = await fetch(`${APP_URL}/api/loyalty-signup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shop: SHOP,
+            customerId: CUSTOMER_ID,
+            email: window.__LOYALTY_CUSTOMER_EMAIL__ || null,
+            firstName: window.__LOYALTY_CUSTOMER_FIRST_NAME__ || null,
+            lastName: window.__LOYALTY_CUSTOMER_LAST_NAME__ || null,
+            referralCode: referralCode,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) { onEnrolled(); }
+        else { btn.disabled = false; btn.textContent = "Try again"; }
+      } catch (e) { btn.disabled = false; btn.textContent = "Try again"; }
+    });
+  }
 
   // ── Render: Dashboard ─────────────────────────────────────────────────────
   function renderDashboard(container, data) {
     const { customer, tierProgress, transactions, vouchers = [], redemptionPresets = [] } = data;
-    const referral     = data.referral || {};
+    const referral = data.referral || {};
     const referralCode = referral.code || '';
     const tier = customer.tier || "bronze";
     const hero = TIER_HERO[tier] || TIER_HERO.bronze;
@@ -307,8 +315,8 @@ function renderSignup(container, onEnrolled) {
 
     const txRows = transactions.length
       ? transactions.map((tx) => {
-          const { emoji, bg } = txIcon(tx.type, tx.status);
-          return `<li class="lw-tx-item">
+        const { emoji, bg } = txIcon(tx.type, tx.status);
+        return `<li class="lw-tx-item">
             <div class="lw-tx-icon" style="background:${bg}">${emoji}</div>
             <div class="lw-tx-meta">
               <div class="lw-tx-desc">${txDesc(tx)}</div>
@@ -316,7 +324,7 @@ function renderSignup(container, onEnrolled) {
             </div>
             <div class="lw-tx-pts ${txPointsClass(tx.type, tx.status)}">${txPointsLabel(tx.type, tx.status, tx.points)}</div>
           </li>`;
-        }).join("")
+      }).join("")
       : `<div class="lw-tx-empty">No transactions yet. Start shopping to earn points!</div>`;
 
     // Redeem tab
@@ -385,8 +393,23 @@ function renderSignup(container, onEnrolled) {
               </div>
             </div>
             <div class="lw-presets" id="lw-presets">
-              ${presetRows.length ? presetRows : '<div class="lw-tx-empty">No redemption options available.</div>'}
-            </div>
+  ${presetRows.length ? presetRows : '<div class="lw-tx-empty">No redemption options available.</div>'}
+</div>
+<div class="lw-custom-redeem" id="lw-custom-redeem">
+  <div class="lw-custom-redeem-label">Custom amount</div>
+  <div class="lw-custom-redeem-row">
+    <input
+      type="number"
+      class="lw-custom-input"
+      id="lw-custom-pts-input"
+      min="2000"
+      step="100"
+      placeholder="e.g. 2500"
+    />
+    <button class="lw-custom-submit" id="lw-custom-submit">Redeem</button>
+  </div>
+  <div class="lw-custom-hint" id="lw-custom-hint">Min 2,000 pts · must be a multiple of 100</div>
+</div>
             ${vouchers.length ? `<div class="lw-vouchers-heading">Your active vouchers</div>${voucherRows}` : ""}
           </div>
 
@@ -400,7 +423,7 @@ function renderSignup(container, onEnrolled) {
               <div class="lw-referral-title">Share your code,<br>both of you win</div>
               <div class="lw-referral-sub">
                 ${referral.signupBonus ? `Your friend gets <strong style="color:var(--lw-accent)">${referral.signupBonus} pts</strong> on signup. ` : ''}
-                ${referral.referrerPct ? `You both earn <strong style="color:var(--lw-accent)">${referral.referrerPct}%</strong> bonus on their first order.` : ''}
+                ${referral.referrerPct ? `You earn <strong style="color:var(--lw-accent)">${referral.referrerPct}%</strong> bonus on their first order.` : ''}
               </div>
               ${referral.totalReferrals != null ? `
               <div style="display:flex;gap:16px;margin-bottom:18px;">
@@ -472,10 +495,10 @@ function renderSignup(container, onEnrolled) {
         presetsEl.innerHTML = `<div class="lw-redeem-loading"><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="lw-spinner"></div> Generating your discount code…</div></div>`;
 
         try {
-          const res  = await fetch(`${APP_URL}/api/loyalty-redeem`, {
-            method:  "POST",
+          const res = await fetch(`${APP_URL}/api/loyalty-redeem`, {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ shop: SHOP, customerId: CUSTOMER_ID, pointsToRedeem: pts }),
+            body: JSON.stringify({ shop: SHOP, customerId: CUSTOMER_ID, pointsToRedeem: pts }),
           });
           const result = await res.json();
 
@@ -483,9 +506,9 @@ function renderSignup(container, onEnrolled) {
             // Update points display
             const newBalance = result.newBalance;
             const ptsDisplay = document.getElementById("lw-pts-display");
-            const redeemPts  = document.getElementById("lw-redeem-pts");
+            const redeemPts = document.getElementById("lw-redeem-pts");
             if (ptsDisplay) ptsDisplay.textContent = newBalance.toLocaleString();
-            if (redeemPts)  redeemPts.textContent  = newBalance.toLocaleString();
+            if (redeemPts) redeemPts.textContent = newBalance.toLocaleString();
 
             // Show the new voucher
             presetsEl.innerHTML = `
@@ -521,13 +544,103 @@ function renderSignup(container, onEnrolled) {
             presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ ${result.error || "Something went wrong. Please try again."}</div>`;
             setTimeout(() => init(), 2000);
           }
-        } catch(e) {
+        } catch (e) {
           presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ Network error. Please try again.</div>`;
           setTimeout(() => init(), 2000);
         } finally {
           redeeming = false;
         }
       });
+    });
+    // ── Custom redemption input ──────────────────────────────────────────────────
+    const customInput = document.getElementById("lw-custom-pts-input");
+    const customSubmit = document.getElementById("lw-custom-submit");
+    const customHint = document.getElementById("lw-custom-hint");
+    const MIN_CUSTOM = 2000;
+    const STEP_CUSTOM = 100;
+
+    function validateCustom(val) {
+      if (!val || isNaN(val)) return { ok: false, msg: "Enter a number of points." };
+      const n = Number(val);
+      if (n < MIN_CUSTOM) return { ok: false, msg: `Minimum is ${MIN_CUSTOM.toLocaleString()} pts.` };
+      if (n % STEP_CUSTOM !== 0) return { ok: false, msg: `Must be a multiple of ${STEP_CUSTOM}.` };
+      if (n > currentPoints) return { ok: false, msg: `You only have ${currentPoints.toLocaleString()} pts.` };
+      return { ok: true, msg: `≈ ${(n / (redemptionPresets[0]?.points / (redemptionPresets[0]?.value || 1) || 100)).toFixed(2)} off` };
+    }
+
+    customInput?.addEventListener("input", function () {
+      const { ok, msg } = validateCustom(this.value);
+      customHint.textContent = msg;
+      customHint.className = "lw-custom-hint" + (ok ? "" : " err");
+      this.classList.toggle("error", !ok && this.value !== "");
+    });
+
+    customSubmit?.addEventListener("click", async function () {
+      const { ok, msg } = validateCustom(customInput?.value);
+      if (!ok) {
+        customHint.textContent = msg;
+        customHint.className = "lw-custom-hint err";
+        customInput?.classList.add("error");
+        return;
+      }
+
+      const pts = Number(customInput.value);
+      const presetsEl = document.getElementById("lw-presets");
+      const customEl = document.getElementById("lw-custom-redeem");
+
+      if (presetsEl) presetsEl.innerHTML = `<div class="lw-redeem-loading"><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="lw-spinner"></div> Generating your discount code…</div></div>`;
+      if (customEl) customEl.style.display = "none";
+
+      try {
+        const res = await fetch(`${APP_URL}/api/loyalty-redeem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop: SHOP, customerId: CUSTOMER_ID, pointsToRedeem: pts }),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          const newBalance = result.newBalance;
+          const ptsDisplay = document.getElementById("lw-pts-display");
+          const redeemPts = document.getElementById("lw-redeem-pts");
+          if (ptsDisplay) ptsDisplay.textContent = newBalance.toLocaleString();
+          if (redeemPts) redeemPts.textContent = newBalance.toLocaleString();
+
+          if (presetsEl) presetsEl.innerHTML = `
+        <div style="text-align:center;padding:16px 0 20px;">
+          <div style="font-size:28px;margin-bottom:8px;">🎉</div>
+          <div style="font-size:15px;font-weight:600;color:#0d0d0d;margin-bottom:4px;">Discount code ready!</div>
+          <div style="font-size:13px;color:rgba(0,0,0,0.45);margin-bottom:16px;">Valid for 30 days · One-time use</div>
+        </div>
+        <div class="lw-voucher">
+          <div>
+            <div class="lw-voucher-code">${result.code}</div>
+            <div class="lw-voucher-meta">Expires ${formatExpiry(result.expiresAt)} · ${pts} pts redeemed</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="lw-voucher-amount">$${result.discountAmount.toFixed(2)}</div>
+            <button class="lw-copy-code-btn" data-code="${result.code}">Copy</button>
+          </div>
+        </div>
+        <button class="lw-btn" style="background:#f3f4f6;color:#0d0d0d;margin-top:12px;" id="lw-redeem-again">Redeem more points</button>
+      `;
+          presetsEl?.querySelector(".lw-copy-code-btn")?.addEventListener("click", function () {
+            navigator.clipboard.writeText(this.dataset.code).then(() => {
+              this.textContent = "Copied!"; this.classList.add("copied");
+              setTimeout(() => { this.textContent = "Copy"; this.classList.remove("copied"); }, 2000);
+            });
+          });
+          document.getElementById("lw-redeem-again")?.addEventListener("click", () => init());
+        } else {
+          if (presetsEl) presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ ${result.error || "Something went wrong."}</div>`;
+          if (customEl) customEl.style.display = "";
+          setTimeout(() => init(), 2000);
+        }
+      } catch (e) {
+        if (presetsEl) presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ Network error. Please try again.</div>`;
+        if (customEl) customEl.style.display = "";
+        setTimeout(() => init(), 2000);
+      }
     });
   }
 
@@ -544,11 +657,11 @@ function renderSignup(container, onEnrolled) {
     container.innerHTML = `<div class="lw-root"><div class="lw-loading"><div class="lw-spinner"></div> Loading your rewards…</div></div>`;
 
     try {
-      const res  = await fetch(`${APP_URL}/api/loyalty-dashboard?shop=${encodeURIComponent(SHOP)}&customerId=${encodeURIComponent(CUSTOMER_ID)}`);
+      const res = await fetch(`${APP_URL}/api/loyalty-dashboard?shop=${encodeURIComponent(SHOP)}&customerId=${encodeURIComponent(CUSTOMER_ID)}`);
       const data = await res.json();
       if (!data.enrolled) { renderSignup(container, () => init()); }
       else { renderDashboard(container, data); }
-    } catch(e) {
+    } catch (e) {
       console.error("[loyalty-widget] init error", e);
       container.innerHTML = `<div class="lw-root"><div class="lw-loading">Something went wrong. Please refresh.</div></div>`;
     }
