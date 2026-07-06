@@ -5,15 +5,11 @@
   const APP_URL = window.__LOYALTY_APP_URL__ || (_root && _root.dataset.appUrl) || "";
   const SHOP = window.__LOYALTY_SHOP__ || (Shopify && Shopify.shop) || "";
   const CUSTOMER_ID = window.__LOYALTY_CUSTOMER_ID__ || null;
-  // ✅ ADD THIS — read referral code from ?ref= URL param once on load
+  // read referral code from ?ref= URL param once on load
   const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
 
   const TIER_ICONS = { bronze: "🥉", silver: "🥈", gold: "🥇" };
-  const TIER_HERO = {
-    bronze: { bg: "#f5e6d3", accent: "#c8813a" },
-    silver: { bg: "#e8edf2", accent: "#8899aa" },
-    gold: { bg: "#fdf3d0", accent: "#d4a017" },
-  };
+  const TIER_ORDER = ["bronze", "silver", "gold"];
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   function injectStyles() {
@@ -21,129 +17,203 @@
     const style = document.createElement("style");
     style.id = "loyalty-widget-styles";
     style.textContent = `
-/* Custom redemption input */
-.lw-custom-redeem { margin-top:14px; border-top:1px solid #f0f0f0; padding-top:14px; }
-.lw-custom-redeem-label { font-size:12px; font-weight:600; color:rgba(0,0,0,0.45); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; }
-.lw-custom-redeem-row { display:flex; gap:8px; align-items:center; }
-.lw-custom-input { flex:1; padding:10px 12px; border:1.5px solid #e8e8e8; border-radius:8px; font-size:14px; font-family:'DM Sans',sans-serif; outline:none; transition:border-color 0.15s; }
-.lw-custom-input:focus { border-color:var(--lw-accent); }
-.lw-custom-input.error { border-color:#b91c1c; }
-.lw-custom-submit { padding:10px 18px; border-radius:8px; border:none; background:var(--lw-accent); color:var(--lw-btn-text,#0d0d0d); font-size:14px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; white-space:nowrap; transition:opacity 0.15s; }
-.lw-custom-submit:hover { opacity:0.88; }
-.lw-custom-hint { font-size:11px; color:rgba(0,0,0,0.4); margin-top:5px; }
-.lw-custom-hint.err { color:#b91c1c; }
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
       .lw-root {
-        --lw-radius:   16px;
-        --lw-shadow:   0 4px 24px rgba(0,0,0,0.08);
-        --lw-accent:   #d4a017;
-        --lw-bg:       #0d0d0d;
-        --lw-text:     #ffffff;
-        --lw-btn-bg:   #d4a017;
-        --lw-btn-text: #0d0d0d;
-        max-width: 480px; margin: 0 auto;
+        /* ── Merchant-configurable, set live from /api/loyalty-style via applyStyle() ── */
+        --lw-radius:    16px;
+        --lw-accent:    #d4a017;
+        --lw-bg:        #0d0d0d;
+        --lw-text:      #ffffff;
+        --lw-btn-bg:    #d4a017;
+        --lw-btn-text:  #0d0d0d;
+
+        /* ── Derived automatically from the merchant colors above (no fixed hexes) ── */
+        --lw-accent-dark: color-mix(in srgb, var(--lw-accent) 65%, black 35%);
+        --lw-accent-soft: color-mix(in srgb, var(--lw-accent) 14%, white 86%);
+        --lw-bg-2:         color-mix(in srgb, var(--lw-bg) 88%, white 12%);
+        --lw-bg-soft:      color-mix(in srgb, var(--lw-bg) 10%, white 90%);
+        --lw-text-soft:    color-mix(in srgb, var(--lw-text) 55%, transparent);
+        --lw-text-faint:   color-mix(in srgb, var(--lw-text) 35%, transparent);
+
+        /* ── Fixed neutrals used only for body text on white cards ── */
+        --lw-shadow:    0 10px 30px rgba(13,31,28,0.06);
+        --lw-ink:       #0d0d0d;
+        --lw-muted:     rgba(0,0,0,0.5);
+        --lw-muted-2:   rgba(0,0,0,0.36);
+        --lw-line:      rgba(0,0,0,0.08);
+
+        --lw-radius-lg: var(--lw-radius);
+        --lw-radius-md: calc(var(--lw-radius) * 0.85);
+        --lw-radius-sm: calc(var(--lw-radius) * 0.6);
+
+        width: 100%; max-width: 1400px; margin: 0 auto;
+        font-family: 'Inter', sans-serif; color: var(--lw-ink);
+        -webkit-font-smoothing: antialiased;
       }
-      .lw-signup { background: var(--lw-bg); border-radius: var(--lw-radius); padding: 36px 32px; color: var(--lw-text); position: relative; overflow: hidden; box-shadow: var(--lw-shadow); }
-      .lw-signup::before { content:''; position:absolute; top:-60px; right:-60px; width:200px; height:200px; background:radial-gradient(circle, color-mix(in srgb, var(--lw-accent) 25%, transparent) 0%, transparent 70%); pointer-events:none; }
-      .lw-signup-badge { display:inline-flex; align-items:center; gap:6px; background:color-mix(in srgb, var(--lw-accent) 15%, transparent); border:1px solid color-mix(in srgb, var(--lw-accent) 40%, transparent); border-radius:999px; padding:4px 12px; font-size:11px; font-weight:600; letter-spacing:0.08em; color:var(--lw-accent); text-transform:uppercase; margin-bottom:20px; }
-      .lw-signup h2 { font-family:'DM Serif Display',serif; font-size:28px; line-height:1.2; margin:0 0 10px; font-weight:400; color:var(--lw-text); }
-      .lw-signup h2 em { font-style:italic; color:var(--lw-accent); }
-      .lw-signup p { font-size:14px; color:color-mix(in srgb, var(--lw-text) 60%, transparent); margin:0 0 28px; line-height:1.6; }
-      .lw-perks { display:flex; gap:12px; margin-bottom:28px; flex-wrap:wrap; }
-      .lw-perk { background:color-mix(in srgb, var(--lw-text) 6%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 10%, transparent); border-radius:10px; padding:10px 14px; font-size:12px; color:color-mix(in srgb, var(--lw-text) 80%, transparent); flex:1; min-width:100px; text-align:center; }
-      .lw-perk-icon { font-size:20px; display:block; margin-bottom:4px; }
-      .lw-btn { display:block; width:100%; padding:14px 24px; border-radius:calc(var(--lw-radius) - 6px); border:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:15px; font-weight:600; letter-spacing:0.01em; transition:all 0.2s ease; text-align:center; }
-      .lw-btn-primary { background:var(--lw-btn-bg); color:var(--lw-btn-text); }
-      .lw-btn-primary:hover:not(:disabled) { opacity:0.88; transform:translateY(-1px); box-shadow:0 6px 20px rgba(0,0,0,0.2); }
-      .lw-btn-primary:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
-      .lw-signup-note { margin-top:12px; font-size:11px; color:color-mix(in srgb, var(--lw-text) 35%, transparent); text-align:center; }
+      .lw-root *{ box-sizing: border-box; }
 
-      .lw-dashboard { background:#fff; border-radius:var(--lw-radius); overflow:hidden; box-shadow:var(--lw-shadow); border:1px solid #e8e8e8; }
-      .lw-hero { padding:28px 28px 24px; position:relative; overflow:hidden; }
-      .lw-hero-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; }
-      .lw-greeting { font-size:13px; color:rgba(0,0,0,0.45); margin-bottom:2px; }
-      .lw-name { font-family:'DM Serif Display',serif; font-size:22px; font-weight:400; color:#0d0d0d; }
-      .lw-tier-badge { display:inline-flex; align-items:center; gap:5px; padding:5px 13px; border-radius:999px; font-size:12px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }
-      .lw-points-display { display:flex; align-items:baseline; gap:6px; margin-bottom:20px; }
-      .lw-points-number { font-family:'DM Serif Display',serif; font-size:48px; line-height:1; color:#0d0d0d; }
-      .lw-points-label { font-size:14px; color:rgba(0,0,0,0.5); font-weight:500; }
-      .lw-progress-wrap { margin-bottom:4px; }
-      .lw-progress-labels { display:flex; justify-content:space-between; font-size:11px; color:rgba(0,0,0,0.45); margin-bottom:6px; }
-      .lw-progress-track { height:6px; background:rgba(0,0,0,0.08); border-radius:999px; overflow:hidden; }
-      .lw-progress-fill { height:100%; border-radius:999px; transition:width 1s cubic-bezier(0.4,0,0.2,1); }
-      .lw-progress-hint { font-size:11px; color:rgba(0,0,0,0.4); margin-top:5px; }
-      .lw-progress-hint strong { color:#0d0d0d; }
-      .lw-max-tier-msg { font-size:12px; font-weight:600; color:var(--lw-accent); margin-top:8px; }
+      .lw-eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:11.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--lw-accent-dark); margin:0 0 10px; }
+      .lw-eyebrow::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--lw-accent); }
+      .lw-heading { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:32px; line-height:1.1; margin:0 0 6px; letter-spacing:-0.01em; color:var(--lw-ink); }
+      .lw-subheading { font-size:14.5px; color:var(--lw-muted); margin:0 0 26px; max-width:560px; }
 
-      .lw-tabs { display:flex; border-bottom:1px solid #efefef; padding:0 28px; overflow-x:auto; }
-      .lw-tab { padding:12px 14px; font-size:13px; font-weight:500; color:rgba(0,0,0,0.4); cursor:pointer; border:none; background:none; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.15s; font-family:'DM Sans',sans-serif; white-space:nowrap; }
-      .lw-tab:hover { color:#0d0d0d; }
-      .lw-tab.active { color:#0d0d0d; border-bottom-color:var(--lw-accent); }
-      .lw-panel { display:none; padding:20px 28px 28px; }
-      .lw-panel.active { display:block; }
+      /* ── Hero row ── */
+      .lw-hero-grid { display:grid; grid-template-columns:1.15fr 0.85fr; gap:20px; margin-bottom:20px; }
+      .lw-hero-card {
+        position:relative; overflow:hidden; border-radius:var(--lw-radius-lg);
+        background: radial-gradient(140% 140% at 15% 15%, var(--lw-accent) 0%, var(--lw-accent-dark) 70%);
+        padding:32px 34px; color:var(--lw-text); min-height:270px; display:flex; flex-direction:column; justify-content:space-between;
+      }
+      .lw-hero-card::after { content:''; position:absolute; inset:0; background:radial-gradient(60% 90% at 100% 0%, color-mix(in srgb, var(--lw-text) 28%, transparent), transparent 60%); mix-blend-mode:overlay; pointer-events:none; }
+      .lw-hero-top { display:flex; justify-content:space-between; align-items:flex-start; position:relative; z-index:1; }
+      .lw-hero-greeting { font-size:13px; opacity:0.85; margin-bottom:4px; }
+      .lw-hero-tier { font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:28px; text-transform:capitalize; }
+      .lw-hero-icon { width:44px; height:44px; border-radius:50%; border:2px solid color-mix(in srgb, var(--lw-text) 70%, transparent); background:color-mix(in srgb, var(--lw-text) 22%, transparent); display:flex; align-items:center; justify-content:center; font-size:19px; }
+      .lw-hero-progress { position:relative; z-index:1; }
+      .lw-hero-progress-row { display:flex; justify-content:space-between; align-items:baseline; font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:10px; }
+      .lw-hero-progress-row .lw-pts-now { font-size:26px; font-weight:600; }
+      .lw-track { height:8px; border-radius:999px; background:color-mix(in srgb, var(--lw-text) 28%, transparent); overflow:hidden; }
+      .lw-track-fill { height:100%; border-radius:999px; background:var(--lw-text); transition:width 1s cubic-bezier(.4,0,.2,1); }
+      .lw-hero-hint { margin-top:10px; font-size:12.5px; opacity:0.9; }
 
-      .lw-tx-list { list-style:none; margin:0; padding:0; }
-      .lw-tx-item { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #f0f0f0; gap:12px; }
+      .lw-panel { background:var(--lw-bg); border-radius:var(--lw-radius-lg); padding:24px 26px; color:var(--lw-text); display:flex; flex-direction:column; gap:14px; }
+      .lw-panel-heading { font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:600; }
+      .lw-panel-row { display:flex; align-items:center; justify-content:space-between; background:var(--lw-bg-2); border:1px solid color-mix(in srgb, var(--lw-text) 8%, transparent); border-radius:var(--lw-radius-md); padding:14px 16px; gap:10px; }
+      .lw-panel-row-value { font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:700; }
+      .lw-panel-row-label { font-size:11px; color:color-mix(in srgb, var(--lw-text) 50%, transparent); text-transform:uppercase; letter-spacing:0.07em; margin-top:2px; }
+      .lw-code-chip-sm { font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:700; letter-spacing:0.05em; color:var(--lw-accent); }
+      .lw-btn-pill { border:none; border-radius:999px; padding:9px 16px; font-size:12.5px; font-weight:700; background:var(--lw-btn-bg); color:var(--lw-btn-text); cursor:pointer; font-family:'Inter',sans-serif; transition:transform .15s ease, opacity .15s ease; white-space:nowrap; }
+      .lw-btn-pill:hover { transform:translateY(-1px); opacity:0.92; }
+      .lw-panel-empty { font-size:12.5px; color:color-mix(in srgb, var(--lw-text) 50%, transparent); text-align:center; padding:10px 0; }
+
+      /* ── Tier stepper row ── */
+      .lw-tier-row { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:20px; }
+      .lw-tier-card { background:#fff; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-md); padding:18px 18px 16px; box-shadow:var(--lw-shadow); }
+      .lw-tier-card.current { background:var(--lw-bg); border-color:var(--lw-bg); color:var(--lw-text); }
+      .lw-tier-card.completed { opacity:0.65; }
+      .lw-tier-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+      .lw-tier-card-name { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; }
+      .lw-tier-card-status { font-size:11.5px; color:var(--lw-muted); }
+      .lw-tier-card.current .lw-tier-card-status { color:color-mix(in srgb, var(--lw-text) 65%, transparent); }
+      .lw-tier-badge-sm { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; padding:3px 8px; border-radius:999px; background:var(--lw-accent-soft); color:var(--lw-accent-dark); }
+      .lw-tier-badge-sm.current { background:color-mix(in srgb, var(--lw-text) 16%, transparent); color:var(--lw-text); }
+      .lw-tier-mini-track { height:5px; border-radius:999px; background:var(--lw-line); margin-top:12px; overflow:hidden; }
+      .lw-tier-card.current .lw-tier-mini-track { background:color-mix(in srgb, var(--lw-text) 16%, transparent); }
+      .lw-tier-mini-fill { height:100%; border-radius:999px; background:var(--lw-accent); }
+      .lw-tier-card.current .lw-tier-mini-fill { background:var(--lw-text); }
+
+      /* ── Lower grid ── */
+      .lw-lower-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:20px; align-items:start; }
+      .lw-lower { display:grid; grid-template-columns:1fr; gap:20px; align-items:start; }
+      .lw-card { background:#fff; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-lg); box-shadow:var(--lw-shadow); padding:24px 26px; }
+      .lw-card + .lw-card { margin-top:20px; }
+      .lw-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+      .lw-card-title { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:16px; }
+
+      /* Transactions */
+      .lw-tx-list { list-style:none; margin:0; padding:0; max-height:520px; overflow-y:auto; }
+      .lw-tx-item { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--lw-line); gap:10px; }
       .lw-tx-item:last-child { border-bottom:none; }
-      .lw-tx-icon { width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+      .lw-tx-icon { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
       .lw-tx-meta { flex:1; min-width:0; }
-      .lw-tx-desc { font-size:13px; font-weight:500; color:#0d0d0d; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .lw-tx-date { font-size:11px; color:rgba(0,0,0,0.4); margin-top:1px; }
-      .lw-tx-pts { font-size:14px; font-weight:600; flex-shrink:0; }
-      .lw-tx-pts.earn { color:#1a7a4a; }
-      .lw-tx-pts.redeem { color:#b91c1c; }
+      .lw-tx-desc { font-size:13.5px; font-weight:600; color:var(--lw-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .lw-tx-date { font-size:11.5px; color:var(--lw-muted-2); margin-top:1px; font-family:'JetBrains Mono',monospace; }
+      .lw-tx-type-pill { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:3px 9px; border-radius:999px; background:var(--lw-line); color:var(--lw-muted); flex-shrink:0; white-space:nowrap; }
+      .lw-tx-type-pill.earn { background:var(--lw-accent-soft); color:var(--lw-accent-dark); }
+      .lw-tx-type-pill.redeem { background:var(--lw-bg-soft); color:var(--lw-bg); }
+      .lw-tx-type-pill.pending { background:#fef3c7; color:#92400e; }
+      .lw-tx-pts { font-size:14px; font-weight:700; flex-shrink:0; font-family:'JetBrains Mono',monospace; }
+      .lw-tx-pts.earn { color:var(--lw-accent-dark); }
+      .lw-tx-pts.redeem { color:var(--lw-bg); }
       .lw-tx-pts.pending { color:#92400e; }
-      .lw-tx-empty { text-align:center; padding:32px 0; color:rgba(0,0,0,0.35); font-size:13px; }
+      .lw-tx-empty { text-align:center; padding:32px 0; color:var(--lw-muted-2); font-size:13px; }
 
-      /* ── Redeem tab ── */
-      .lw-redeem-balance { background:#f9f9f9; border-radius:10px; padding:14px 16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; }
-      .lw-redeem-balance-pts { font-size:22px; font-weight:700; color:#0d0d0d; }
-      .lw-redeem-balance-label { font-size:12px; color:rgba(0,0,0,0.45); margin-top:2px; }
-      .lw-presets { display:flex; flex-direction:column; gap:10px; margin-bottom:20px; }
-      .lw-preset { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border:1.5px solid #e8e8e8; border-radius:10px; cursor:pointer; transition:all 0.15s; background:#fff; width:100%; font-family:'DM Sans',sans-serif; }
-      .lw-preset:hover { border-color:var(--lw-accent); background:color-mix(in srgb, var(--lw-accent) 4%, white); }
+      /* Redeem */
+      .lw-redeem-balance { background:var(--lw-bg); border-radius:var(--lw-radius-md); padding:16px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+      .lw-redeem-balance-pts { font-family:'Space Grotesk',sans-serif; font-size:21px; font-weight:700; color:var(--lw-text); }
+      .lw-redeem-balance-label { font-size:11px; color:color-mix(in srgb, var(--lw-text) 55%, transparent); margin-top:2px; text-transform:uppercase; letter-spacing:0.06em; }
+      .lw-redeem-rate-pill { font-size:11px; font-weight:700; background:var(--lw-btn-bg); color:var(--lw-btn-text); padding:7px 14px; border-radius:999px; white-space:nowrap; }
+      .lw-presets { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+      .lw-preset { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-sm); cursor:pointer; transition:all 0.15s; background:#fff; width:100%; font-family:'Inter',sans-serif; }
+      .lw-preset:hover:not(.disabled) { border-color:var(--lw-accent); background:color-mix(in srgb, var(--lw-accent) 4%, white); }
       .lw-preset.disabled { opacity:0.4; cursor:not-allowed; }
-      .lw-preset-pts { font-size:15px; font-weight:600; color:#0d0d0d; }
-      .lw-preset-val { font-size:13px; color:#1a7a4a; font-weight:600; }
-      .lw-preset-arrow { color:rgba(0,0,0,0.25); font-size:16px; }
-      .lw-redeem-loading { text-align:center; padding:20px; font-size:13px; color:rgba(0,0,0,0.45); }
-
-      /* Active vouchers */
-      .lw-vouchers-heading { font-size:12px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:10px; }
-      .lw-voucher { background:#0d0d0d; border-radius:10px; padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
-      .lw-voucher-code { font-family:monospace; font-size:16px; font-weight:700; color:var(--lw-accent); letter-spacing:0.08em; }
-      .lw-voucher-meta { font-size:11px; color:rgba(255,255,255,0.45); margin-top:2px; }
-      .lw-voucher-amount { font-size:18px; font-weight:700; color:#fff; }
-      .lw-copy-code-btn { background:var(--lw-btn-bg); color:var(--lw-btn-text); border:none; border-radius:6px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; white-space:nowrap; }
-      .lw-copy-code-btn:hover { opacity:0.88; }
-      .lw-copy-code-btn.copied { background:#1a7a4a; color:#fff; }
-      .lw-no-vouchers { text-align:center; padding:24px 0; color:rgba(0,0,0,0.35); font-size:13px; }
-
-      /* Referral */
-      .lw-referral-card { background:var(--lw-bg); border-radius:calc(var(--lw-radius) - 4px); padding:24px; color:var(--lw-text); position:relative; overflow:hidden; }
-      .lw-referral-card::after { content:''; position:absolute; bottom:-40px; right:-40px; width:160px; height:160px; background:radial-gradient(circle, color-mix(in srgb, var(--lw-accent) 20%, transparent) 0%, transparent 70%); pointer-events:none; }
-      .lw-referral-label { font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:color-mix(in srgb, var(--lw-text) 50%, transparent); margin-bottom:8px; }
-      .lw-referral-title { font-family:'DM Serif Display',serif; font-size:20px; font-weight:400; margin-bottom:6px; color:var(--lw-text); }
-      .lw-referral-sub { font-size:13px; color:color-mix(in srgb, var(--lw-text) 55%, transparent); margin-bottom:20px; line-height:1.5; }
-      .lw-referral-code-row { display:flex; gap:8px; align-items:stretch; }
-      .lw-code-box { flex:1; background:color-mix(in srgb, var(--lw-text) 8%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 15%, transparent); border-radius:8px; padding:10px 14px; font-size:15px; font-weight:600; letter-spacing:0.1em; color:var(--lw-accent); font-family:monospace; }
-      .lw-copy-btn { background:var(--lw-btn-bg); color:var(--lw-btn-text); border:none; border-radius:8px; padding:10px 16px; font-size:13px; font-weight:600; cursor:pointer; font-family:'DM Sans',sans-serif; transition:all 0.15s; white-space:nowrap; }
-      .lw-copy-btn:hover { opacity:0.88; }
-      .lw-copy-btn.copied { background:#1a7a4a; color:#fff; }
-
-      .lw-loading { display:flex; align-items:center; justify-content:center; padding:48px; color:rgba(0,0,0,0.35); font-size:13px; gap:8px; }
-      .lw-spinner { width:18px; height:18px; border:2px solid rgba(0,0,0,0.1); border-top-color:#0d0d0d; border-radius:50%; animation:lw-spin 0.7s linear infinite; }
+      .lw-preset-pts { font-size:14px; font-weight:600; color:var(--lw-ink); }
+      .lw-preset-val { font-size:12.5px; color:var(--lw-accent-dark); font-weight:700; }
+      .lw-preset-arrow { color:rgba(0,0,0,0.25); font-size:15px; margin-left:8px; }
+      .lw-redeem-loading { text-align:center; padding:20px; font-size:13px; color:var(--lw-muted); }
+      .lw-spinner { width:18px; height:18px; border:2px solid rgba(0,0,0,0.1); border-top-color:var(--lw-ink); border-radius:50%; animation:lw-spin 0.7s linear infinite; display:inline-block; vertical-align:middle; }
       @keyframes lw-spin { to { transform:rotate(360deg); } }
-      .lw-not-logged-in { text-align:center; padding:40px 24px; background:#f9f9f9; border-radius:var(--lw-radius); border:1px dashed #ddd; }
-      .lw-not-logged-in p { font-size:14px; color:rgba(0,0,0,0.5); margin:8px 0 20px; }
-      .lw-not-logged-in a { display:inline-block; background:var(--lw-bg); color:var(--lw-text); text-decoration:none; padding:10px 24px; border-radius:8px; font-size:14px; font-weight:600; transition:opacity 0.15s; }
-      .lw-not-logged-in a:hover { opacity:0.8; }
 
-      @media (max-width:480px) {
-        .lw-signup { padding:28px 20px; }
-        .lw-hero { padding:24px 20px 20px; }
-        .lw-tabs { padding:0 16px; }
-        .lw-panel { padding:16px 20px 24px; }
-        .lw-points-number { font-size:40px; }
+      .lw-custom-redeem { margin-top:6px; border-top:1px solid var(--lw-line); padding-top:14px; }
+      .lw-custom-redeem-label { font-size:11.5px; font-weight:600; color:var(--lw-muted-2); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px; }
+      .lw-custom-redeem-row { display:flex; gap:8px; align-items:center; }
+      .lw-custom-input { flex:1; padding:11px 13px; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-sm); font-size:13.5px; font-family:'Inter',sans-serif; outline:none; transition:border-color 0.15s; }
+      .lw-custom-input:focus { border-color:var(--lw-accent); }
+      .lw-custom-input.error { border-color:#b91c1c; }
+      .lw-custom-submit { padding:11px 18px; border-radius:var(--lw-radius-sm); border:none; background:var(--lw-btn-bg); color:var(--lw-btn-text); font-size:13px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap; transition:opacity 0.15s; }
+      .lw-custom-submit:hover { opacity:0.88; }
+      .lw-custom-hint { font-size:11px; color:var(--lw-muted-2); margin-top:6px; }
+      .lw-custom-hint.err { color:#b91c1c; }
+
+      /* Vouchers */
+      .lw-vouchers-heading { font-size:11.5px; font-weight:600; color:var(--lw-muted-2); text-transform:uppercase; letter-spacing:0.06em; margin:18px 0 10px; }
+      .lw-voucher { background:var(--lw-bg); border-radius:var(--lw-radius-sm); padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+      .lw-voucher-code { font-family:'JetBrains Mono',monospace; font-size:15px; font-weight:700; color:var(--lw-accent); letter-spacing:0.06em; }
+      .lw-voucher-meta { font-size:11px; color:color-mix(in srgb, var(--lw-text) 45%, transparent); margin-top:2px; }
+      .lw-voucher-amount { font-size:17px; font-weight:700; color:var(--lw-text); font-family:'Space Grotesk',sans-serif; }
+      .lw-copy-code-btn { background:var(--lw-btn-bg); color:var(--lw-btn-text); border:none; border-radius:8px; padding:7px 12px; font-size:11.5px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.15s; white-space:nowrap; }
+      .lw-copy-code-btn:hover { opacity:0.88; }
+      .lw-copy-code-btn.copied { background:var(--lw-accent-dark); color:var(--lw-text); }
+
+      /* Referral card */
+      .lw-referral-card { background:var(--lw-bg); border-radius:var(--lw-radius-lg); padding:24px 26px; color:var(--lw-text); position:relative; overflow:hidden; }
+      .lw-referral-card::after { content:''; position:absolute; bottom:-40px; right:-40px; width:160px; height:160px; background:radial-gradient(circle, color-mix(in srgb, var(--lw-accent) 25%, transparent) 0%, transparent 70%); pointer-events:none; }
+      .lw-referral-label { font-size:11px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:color-mix(in srgb, var(--lw-text) 50%, transparent); margin-bottom:8px; position:relative; z-index:1; }
+      .lw-referral-title { font-family:'Space Grotesk',sans-serif; font-size:19px; font-weight:600; margin-bottom:6px; position:relative; z-index:1; }
+      .lw-referral-sub { font-size:12.5px; color:color-mix(in srgb, var(--lw-text) 60%, transparent); margin-bottom:18px; line-height:1.5; position:relative; z-index:1; }
+      .lw-referral-stats { display:flex; gap:16px; margin-bottom:16px; position:relative; z-index:1; }
+      .lw-referral-stat-num { font-family:'Space Grotesk',sans-serif; font-size:20px; font-weight:700; color:var(--lw-accent); }
+      .lw-referral-stat-label { font-size:10.5px; color:color-mix(in srgb, var(--lw-text) 50%, transparent); }
+      .lw-referral-code-row { display:flex; gap:8px; align-items:stretch; position:relative; z-index:1; }
+      .lw-code-box { flex:1; background:color-mix(in srgb, var(--lw-text) 8%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 15%, transparent); border-radius:var(--lw-radius-sm); padding:10px 14px; font-size:14px; font-weight:600; letter-spacing:0.08em; color:var(--lw-accent); font-family:'JetBrains Mono',monospace; }
+      .lw-copy-btn { background:var(--lw-btn-bg); color:var(--lw-btn-text); border:none; border-radius:var(--lw-radius-sm); padding:10px 16px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.15s; white-space:nowrap; }
+      .lw-copy-btn:hover { opacity:0.88; }
+      .lw-copy-btn.copied { background:var(--lw-accent-dark); color:var(--lw-text); }
+      .lw-share-btn-full { margin-top:8px; width:100%; border-radius:var(--lw-radius-sm); padding:11px; position:relative; z-index:1; }
+
+      /* Signup */
+      .lw-signup-wrap { display:grid; grid-template-columns:1.1fr 0.9fr; gap:0; border-radius:var(--lw-radius-lg); overflow:hidden; box-shadow:var(--lw-shadow); }
+      .lw-signup { background: radial-gradient(140% 140% at 10% 0%, var(--lw-accent) 0%, var(--lw-accent-dark) 70%); padding:44px 42px; color:var(--lw-text); position:relative; overflow:hidden; }
+      .lw-signup::before { content:''; position:absolute; top:-60px; right:-60px; width:220px; height:220px; background:radial-gradient(circle, color-mix(in srgb, var(--lw-text) 25%, transparent) 0%, transparent 70%); pointer-events:none; }
+      .lw-signup-badge { display:inline-flex; align-items:center; gap:6px; background:color-mix(in srgb, var(--lw-text) 16%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 30%, transparent); border-radius:999px; padding:5px 13px; font-size:11px; font-weight:700; letter-spacing:0.08em; color:var(--lw-text); text-transform:uppercase; margin-bottom:22px; position:relative; z-index:1; }
+      .lw-signup h2 { font-family:'Space Grotesk',sans-serif; font-size:32px; line-height:1.15; margin:0 0 12px; font-weight:700; color:var(--lw-text); position:relative; z-index:1; }
+      .lw-signup p { font-size:14.5px; color:color-mix(in srgb, var(--lw-text) 85%, transparent); margin:0 0 28px; line-height:1.6; position:relative; z-index:1; max-width:380px; }
+      .lw-perks { display:flex; gap:12px; margin-bottom:0; flex-wrap:wrap; position:relative; z-index:1; }
+      .lw-perk { background:color-mix(in srgb, var(--lw-text) 12%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 20%, transparent); border-radius:var(--lw-radius-sm); padding:12px 14px; font-size:12.5px; color:var(--lw-text); flex:1; min-width:100px; text-align:center; }
+      .lw-perk-icon { font-size:20px; display:block; margin-bottom:6px; }
+      .lw-signup-form { background:#fff; padding:44px 42px; display:flex; flex-direction:column; justify-content:center; }
+      .lw-signup-form-label { display:block; font-size:11.5px; font-weight:700; color:var(--lw-muted); margin-bottom:8px; letter-spacing:0.06em; text-transform:uppercase; }
+      .lw-signup-form input { width:100%; box-sizing:border-box; background:#f7f7f6; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-sm); padding:13px 15px; font-size:14px; font-family:'Inter',sans-serif; color:var(--lw-ink); outline:none; transition:border-color 0.15s; margin-bottom:22px; }
+      .lw-signup-form input:focus { border-color:var(--lw-accent); }
+      .lw-btn { display:block; width:100%; padding:15px 24px; border-radius:var(--lw-radius-md); border:none; cursor:pointer; font-family:'Inter',sans-serif; font-size:15px; font-weight:700; letter-spacing:0.01em; transition:all 0.2s ease; text-align:center; }
+      .lw-btn-primary { background:var(--lw-btn-bg); color:var(--lw-btn-text); }
+      .lw-btn-primary:hover:not(:disabled) { opacity:0.9; transform:translateY(-1px); box-shadow:0 8px 22px rgba(0,0,0,0.15); }
+      .lw-btn-primary:disabled { opacity:0.6; cursor:not-allowed; transform:none; }
+      .lw-signup-note { margin-top:14px; font-size:11.5px; color:var(--lw-muted-2); text-align:center; }
+
+      .lw-loading { display:flex; align-items:center; justify-content:center; padding:60px; color:var(--lw-muted-2); font-size:13px; gap:8px; }
+      .lw-not-logged-in { text-align:center; padding:60px 24px; background:#f9f9f8; border-radius:var(--lw-radius-lg); border:1px dashed var(--lw-line); }
+      .lw-not-logged-in p { font-size:14px; color:var(--lw-muted); margin:8px 0 22px; }
+      .lw-not-logged-in a { display:inline-block; background:var(--lw-btn-bg); color:var(--lw-btn-text); text-decoration:none; padding:12px 28px; border-radius:var(--lw-radius-sm); font-size:14px; font-weight:700; transition:opacity 0.15s; }
+      .lw-not-logged-in a:hover { opacity:0.85; }
+
+      @media (max-width:900px) {
+        .lw-hero-grid, .lw-lower-grid, .lw-signup-wrap { grid-template-columns:1fr; }
+        .lw-tier-row { grid-template-columns:1fr; }
+        .lw-heading { font-size:26px; }
+        .lw-signup, .lw-signup-form { padding:30px 24px; }
+        .lw-tx-type-pill { display:none; }
       }
     `;
     document.head.appendChild(style);
@@ -158,8 +228,12 @@
       const s = await res.json();
       const root = document.getElementById("loyalty-widget-root");
       if (!root) return;
-      if (s.accentColor) root.style.setProperty("--lw-accent", s.accentColor);
-      if (s.bgColor) root.style.setProperty("--lw-bg", s.bgColor);
+      if (s.accentColor) {
+        root.style.setProperty("--lw-accent", s.accentColor);
+      }
+      if (s.bgColor) {
+        root.style.setProperty("--lw-bg", s.bgColor);
+      }
       if (s.textColor) root.style.setProperty("--lw-text", s.textColor);
       if (s.buttonColor) root.style.setProperty("--lw-btn-bg", s.buttonColor);
       if (s.buttonTextColor) root.style.setProperty("--lw-btn-text", s.buttonTextColor);
@@ -177,8 +251,8 @@
   function txIcon(type, status) {
     if (status === "pending") return { emoji: "⏳", bg: "#fef3c7" };
     if (status === "voided" || status === "deducted") return { emoji: "↩️", bg: "#fee2e2" };
-    if (type === "earn") return { emoji: "⭐", bg: "#d1fae5" };
-    if (type === "redeem") return { emoji: "🎟️", bg: "#ede9fe" };
+    if (type === "earn") return { emoji: "⭐", bg: "var(--lw-accent-soft)" };
+    if (type === "redeem") return { emoji: "🎟️", bg: "var(--lw-bg-soft)" };
     if (type === "adjust") return { emoji: "✏️", bg: "#e0e7ff" };
     return { emoji: "📋", bg: "#f3f4f6" };
   }
@@ -195,6 +269,14 @@
     if (type === "redeem") return `−${Math.abs(points)}`;
     return `${points > 0 ? "+" : ""}${points}`;
   }
+  function txTypeLabel(type, status) {
+    if (status === "pending") return "Pending";
+    if (status === "voided" || status === "deducted") return "Adjusted";
+    if (type === "earn") return "Earned";
+    if (type === "redeem") return "Redeemed";
+    if (type === "adjust") return "Adjusted";
+    return "Activity";
+  }
   function txDesc(tx) {
     if (tx.note) return tx.note;
     if (tx.orderName) return `Order ${tx.orderName}`;
@@ -202,6 +284,56 @@
     if (tx.type === "redeem") return "Points redeemed";
     if (tx.type === "adjust") return "Manual adjustment";
     return "Transaction";
+  }
+
+  // ── Tier stepper row (Bronze → Silver → Gold) ─────────────────────────────
+  function renderTierRow(customer, tierProgress) {
+    const currentTier = customer.tier || "bronze";
+    const currentIdx = TIER_ORDER.indexOf(currentTier);
+
+    const cards = TIER_ORDER.map((t, i) => {
+      const icon = TIER_ICONS[t];
+      const label = t.charAt(0).toUpperCase() + t.slice(1);
+      let stateClass = "upcoming";
+      let badgeClass = "";
+      let badgeLabel = "Locked";
+      let status = "";
+      let showBar = false;
+      let fillPct = 0;
+
+      if (i < currentIdx) {
+        stateClass = "completed";
+        badgeLabel = "Unlocked";
+        status = "Completed";
+      } else if (i === currentIdx) {
+        stateClass = "current";
+        badgeClass = "current";
+        badgeLabel = "Current";
+        showBar = true;
+        if (tierProgress.nextTier) {
+          status = `${tierProgress.pointsToNext.toLocaleString()} pts to go`;
+          fillPct = tierProgress.progressPercent;
+        } else {
+          status = "Top tier";
+          fillPct = 100;
+        }
+      } else if (tierProgress.nextTier === t) {
+        status = `${tierProgress.pointsToNext.toLocaleString()} pts away`;
+      } else {
+        status = "Locked";
+      }
+
+      return `<div class="lw-tier-card ${stateClass}">
+        <div class="lw-tier-card-head">
+          <div class="lw-tier-card-name">${icon} ${label}</div>
+          ${i <= currentIdx ? `<span class="lw-tier-badge-sm ${badgeClass}">${badgeLabel}</span>` : ""}
+        </div>
+        <div class="lw-tier-card-status">${status}</div>
+        ${showBar ? `<div class="lw-tier-mini-track"><div class="lw-tier-mini-fill" style="width:${fillPct}%"></div></div>` : ""}
+      </div>`;
+    }).join("");
+
+    return `<div class="lw-tier-row">${cards}</div>`;
   }
 
   // ── Render: Not logged in ──────────────────────────────────────────────────
@@ -217,54 +349,30 @@
   }
 
   // ── Render: Signup ─────────────────────────────────────────────────────────
-  // ── Render: Signup ─────────────────────────────────────────────────────────
   function renderSignup(container, onEnrolled) {
-    const refCode = new URLSearchParams(window.location.search).get("ref") || "";
+    const refCode = REF_CODE || "";
 
     container.innerHTML = `
     <div class="lw-root">
-      <div class="lw-signup">
-        <div class="lw-signup-badge">✦ New — Loyalty Program</div>
-        <h2>Earn rewards on<br><em>every purchase</em></h2>
-        <p>Join thousands of members earning points, unlocking tiers, and getting exclusive perks.</p>
-        <div class="lw-perks">
-          <div class="lw-perk"><span class="lw-perk-icon">⭐</span>Earn points</div>
-          <div class="lw-perk"><span class="lw-perk-icon">🎯</span>Unlock tiers</div>
-          <div class="lw-perk"><span class="lw-perk-icon">🎁</span>Get rewards</div>
+      <div class="lw-signup-wrap">
+        <div class="lw-signup">
+          <div class="lw-signup-badge">✦ New — Loyalty Program</div>
+          <h2>Earn rewards on every purchase</h2>
+          <p>Join thousands of members earning points, unlocking tiers, and getting exclusive perks.</p>
+          <div class="lw-perks">
+            <div class="lw-perk"><span class="lw-perk-icon">⭐</span>Earn points</div>
+            <div class="lw-perk"><span class="lw-perk-icon">🎯</span>Unlock tiers</div>
+            <div class="lw-perk"><span class="lw-perk-icon">🎁</span>Get rewards</div>
+          </div>
         </div>
-        <div style="margin-bottom:20px;">
-          <label style="display:block;font-size:12px;font-weight:600;color:color-mix(in srgb,var(--lw-text) 55%,transparent);margin-bottom:8px;letter-spacing:0.05em;text-transform:uppercase;">
-            Referral Code <span style="font-weight:400;opacity:0.6;">(optional)</span>
-          </label>
-          <input
-            id="lw-referral-input"
-            type="text"
-            placeholder="Enter referral code"
-            value="${refCode}"
-            style="
-              width:100%;box-sizing:border-box;
-              background:color-mix(in srgb,var(--lw-text) 8%,transparent);
-              border:1px solid color-mix(in srgb,var(--lw-text) 18%,transparent);
-              border-radius:10px;padding:12px 14px;
-              font-size:14px;font-family:'DM Sans',sans-serif;
-              color:var(--lw-text);outline:none;
-              transition:border-color 0.15s;
-            "
-          />
+        <div class="lw-signup-form">
+          <label class="lw-signup-form-label">Referral code (optional)</label>
+          <input id="lw-referral-input" type="text" placeholder="Enter referral code" value="${refCode}" />
+          <button class="lw-btn lw-btn-primary" id="lw-join-btn">Join for free</button>
+          <p class="lw-signup-note">No credit card needed. Instant enrollment.</p>
         </div>
-        <button class="lw-btn lw-btn-primary" id="lw-join-btn">Join for free</button>
-        <p class="lw-signup-note">No credit card needed. Instant enrollment.</p>
       </div>
     </div>`;
-
-    // Focus style on input
-    const input = document.getElementById("lw-referral-input");
-    input.addEventListener("focus", function () {
-      this.style.borderColor = "var(--lw-accent)";
-    });
-    input.addEventListener("blur", function () {
-      this.style.borderColor = "color-mix(in srgb,var(--lw-text) 18%,transparent)";
-    });
 
     document.getElementById("lw-join-btn").addEventListener("click", async function () {
       const btn = this;
@@ -297,21 +405,33 @@
     const referral = data.referral || {};
     const referralCode = referral.code || '';
     const tier = customer.tier || "bronze";
-    const hero = TIER_HERO[tier] || TIER_HERO.bronze;
     const icon = TIER_ICONS[tier] || "🥉";
     const name = customer.firstName || "Member";
+    const currentPoints = customer.points;
 
-    const progressBar = tierProgress.nextTier ? `
-      <div class="lw-progress-wrap">
-        <div class="lw-progress-labels">
-          <span>${icon} ${tier.charAt(0).toUpperCase() + tier.slice(1)}</span>
-          <span>${TIER_ICONS[tierProgress.nextTier]} ${tierProgress.nextTier.charAt(0).toUpperCase() + tierProgress.nextTier.slice(1)}</span>
+    const heroProgress = tierProgress.nextTier ? `
+      <div class="lw-hero-progress-row">
+        <span class="lw-pts-now">${currentPoints.toLocaleString()}</span>
+        <span>/ ${(currentPoints + tierProgress.pointsToNext).toLocaleString()} pts</span>
+      </div>
+      <div class="lw-track"><div class="lw-track-fill" style="width:${tierProgress.progressPercent}%"></div></div>
+      <div class="lw-hero-hint">${tierProgress.pointsToNext.toLocaleString()} pts to reach ${tierProgress.nextTier}</div>
+    ` : `
+      <div class="lw-hero-progress-row"><span class="lw-pts-now">${currentPoints.toLocaleString()}</span><span>pts</span></div>
+      <div class="lw-track"><div class="lw-track-fill" style="width:100%"></div></div>
+      <div class="lw-hero-hint">🏆 You've reached our highest tier!</div>
+    `;
+
+    const topVoucher = vouchers[0];
+    const panelVoucherBlock = topVoucher ? `
+      <div class="lw-panel-row">
+        <div>
+          <div class="lw-panel-row-value">$${topVoucher.discountAmount.toFixed(2)}</div>
+          <div class="lw-panel-row-label">Active voucher · ${topVoucher.code}</div>
         </div>
-        <div class="lw-progress-track">
-          <div class="lw-progress-fill" style="width:${tierProgress.progressPercent}%;background:${hero.accent}"></div>
-        </div>
-        <div class="lw-progress-hint"><strong>${tierProgress.pointsToNext.toLocaleString()} pts</strong> to reach ${tierProgress.nextTier}</div>
-      </div>` : `<div class="lw-max-tier-msg">🏆 You've reached our highest tier!</div>`;
+        <button class="lw-btn-pill" id="lw-hero-copy-voucher" data-code="${topVoucher.code}">Copy code</button>
+      </div>
+    ` : `<div class="lw-panel-row"><div class="lw-panel-empty" style="text-align:left;">No active vouchers yet — redeem points below to get one.</div></div>`;
 
     const txRows = transactions.length
       ? transactions.map((tx) => {
@@ -322,25 +442,20 @@
               <div class="lw-tx-desc">${txDesc(tx)}</div>
               <div class="lw-tx-date">${formatDate(tx.createdAt)}</div>
             </div>
+            <span class="lw-tx-type-pill ${txPointsClass(tx.type, tx.status)}">${txTypeLabel(tx.type, tx.status)}</span>
             <div class="lw-tx-pts ${txPointsClass(tx.type, tx.status)}">${txPointsLabel(tx.type, tx.status, tx.points)}</div>
           </li>`;
       }).join("")
       : `<div class="lw-tx-empty">No transactions yet. Start shopping to earn points!</div>`;
 
-    // Redeem tab
-    const presets = redemptionPresets;
-    const currentPoints = customer.points;
-
-    const presetRows = presets.map((p) => {
+    const presetRows = redemptionPresets.map((p) => {
       const canAfford = p.canAfford !== undefined ? p.canAfford : currentPoints >= p.points;
       return `<button class="lw-preset ${canAfford ? "" : "disabled"}" data-points="${p.points}" ${canAfford ? "" : "disabled"}>
-        <div>
-          <div class="lw-preset-pts">${p.points.toLocaleString()} pts</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <span class="lw-preset-pts">${p.points.toLocaleString()} pts</span>
+        <span style="display:flex;align-items:center;">
           <span class="lw-preset-val">$${(p.value || p.discountAmount || 0).toFixed(2)} off</span>
           <span class="lw-preset-arrow">→</span>
-        </div>
+        </span>
       </button>`;
     }).join("");
 
@@ -360,105 +475,115 @@
 
     container.innerHTML = `
       <div class="lw-root">
-        <div class="lw-dashboard">
-          <div class="lw-hero" style="background:${hero.bg}">
+        <div class="lw-eyebrow">Loyalty Program</div>
+        <h1 class="lw-heading">Welcome back, ${name}</h1>
+        <p class="lw-subheading">Track your tier progress, redeem points for rewards, and share your referral code.</p>
+
+        <div class="lw-hero-grid">
+          <div class="lw-hero-card">
             <div class="lw-hero-top">
               <div>
-                <div class="lw-greeting">Welcome back,</div>
-                <div class="lw-name">${name}</div>
+                <div class="lw-hero-greeting">Current tier</div>
+                <div class="lw-hero-tier">${tier}</div>
               </div>
-              <div class="lw-tier-badge" style="background:${hero.accent};color:${hero.bg}">${icon} ${tier}</div>
+              <div class="lw-hero-icon">${icon}</div>
             </div>
-            <div class="lw-points-display">
-              <div class="lw-points-number" id="lw-pts-display">${currentPoints.toLocaleString()}</div>
-              <div class="lw-points-label">points available</div>
-            </div>
-            ${progressBar}
+            <div class="lw-hero-progress">${heroProgress}</div>
           </div>
 
-          <div class="lw-tabs">
-            <button class="lw-tab active" data-panel="redeem">Redeem</button>
-            <button class="lw-tab" data-panel="history">History</button>
-            <button class="lw-tab" data-panel="referral">Refer a Friend</button>
-          </div>
-
-          <div class="lw-panel active" id="lw-panel-redeem">
-            <div class="lw-redeem-balance">
+          <div class="lw-panel">
+            <div class="lw-panel-heading">Your rewards</div>
+            ${panelVoucherBlock}
+            <div class="lw-panel-row">
               <div>
-                <div class="lw-redeem-balance-pts" id="lw-redeem-pts">${currentPoints.toLocaleString()}</div>
-                <div class="lw-redeem-balance-label">points available to redeem</div>
+                <div class="lw-code-chip-sm">${referralCode || "—"}</div>
+                <div class="lw-panel-row-label" style="margin-top:6px;">Your referral code</div>
               </div>
-              <div style="font-size:12px;color:rgba(0,0,0,0.4);text-align:right;">
-                ${tier === "gold" ? "🥇 Gold rate" : tier === "silver" ? "🥈 Silver rate" : "🥉 Bronze rate"}
-              </div>
+              <button class="lw-btn-pill" id="lw-hero-copy-referral">Copy code</button>
             </div>
-            <div class="lw-presets" id="lw-presets">
-  ${presetRows.length ? presetRows : '<div class="lw-tx-empty">No redemption options available.</div>'}
-</div>
-<div class="lw-custom-redeem" id="lw-custom-redeem">
-  <div class="lw-custom-redeem-label">Custom amount</div>
-  <div class="lw-custom-redeem-row">
-    <input
-      type="number"
-      class="lw-custom-input"
-      id="lw-custom-pts-input"
-      min="2000"
-      step="100"
-      placeholder="e.g. 2500"
-    />
-    <button class="lw-custom-submit" id="lw-custom-submit">Redeem</button>
-  </div>
-  <div class="lw-custom-hint" id="lw-custom-hint">Min 2,000 pts · must be a multiple of 100</div>
-</div>
-            ${vouchers.length ? `<div class="lw-vouchers-heading">Your active vouchers</div>${voucherRows}` : ""}
           </div>
+        </div>
 
-          <div class="lw-panel" id="lw-panel-history">
-            <ul class="lw-tx-list">${txRows}</ul>
-          </div>
+        ${renderTierRow(customer, tierProgress)}
 
-          <div class="lw-panel" id="lw-panel-referral">
-            <div class="lw-referral-card">
+        <div class="lw-lower-grid">
+          
+           <div class="lw-referral-card">
               <div class="lw-referral-label">Refer & Earn</div>
-              <div class="lw-referral-title">Share your code,<br>both of you win</div>
+              <div class="lw-referral-title">Share your code, both of you win</div>
               <div class="lw-referral-sub">
                 ${referral.signupBonus ? `Your friend gets <strong style="color:var(--lw-accent)">${referral.signupBonus} pts</strong> on signup. ` : ''}
                 ${referral.referrerPct ? `You earn <strong style="color:var(--lw-accent)">${referral.referrerPct}%</strong> bonus on their first order.` : ''}
               </div>
               ${referral.totalReferrals != null ? `
-              <div style="display:flex;gap:16px;margin-bottom:18px;">
-                <div style="text-align:center;">
-                  <div style="font-size:22px;font-weight:700;color:var(--lw-accent)">${referral.totalReferrals}</div>
-                  <div style="font-size:11px;color:color-mix(in srgb,var(--lw-text) 50%,transparent)">Referred</div>
-                </div>
-                <div style="text-align:center;">
-                  <div style="font-size:22px;font-weight:700;color:var(--lw-accent)">${referral.completedReferrals || 0}</div>
-                  <div style="font-size:11px;color:color-mix(in srgb,var(--lw-text) 50%,transparent)">Completed</div>
-                </div>
+              <div class="lw-referral-stats">
+                <div><div class="lw-referral-stat-num">${referral.totalReferrals}</div><div class="lw-referral-stat-label">Referred</div></div>
+                <div><div class="lw-referral-stat-num">${referral.completedReferrals || 0}</div><div class="lw-referral-stat-label">Completed</div></div>
               </div>` : ''}
               <div class="lw-referral-code-row">
                 <div class="lw-code-box">${referralCode}</div>
                 <button class="lw-copy-btn" id="lw-copy-referral">Copy</button>
               </div>
-              <button class="lw-copy-btn" id="lw-share-btn" style="margin-top:8px;width:100%;border-radius:8px;padding:10px;">
-                🔗 Copy share link
-              </button>
+              <button class="lw-copy-btn lw-share-btn-full" id="lw-share-btn">🔗 Copy share link</button>
             </div>
+         
+
+          <div>
+            <div class="lw-card">
+              <div class="lw-card-head">
+                <div class="lw-card-title">Redeem points</div>
+                <span class="lw-redeem-rate-pill">${icon} ${tier} rate</span>
+              </div>
+              <div class="lw-redeem-balance">
+                <div>
+                  <div class="lw-redeem-balance-pts" id="lw-redeem-pts">${currentPoints.toLocaleString()}</div>
+                  <div class="lw-redeem-balance-label">points available</div>
+                </div>
+              </div>
+              <div class="lw-presets" id="lw-presets">
+                ${presetRows.length ? presetRows : '<div class="lw-tx-empty">No redemption options available.</div>'}
+              </div>
+              <div class="lw-custom-redeem" id="lw-custom-redeem">
+                <div class="lw-custom-redeem-label">Custom amount</div>
+                <div class="lw-custom-redeem-row">
+                  <input type="number" class="lw-custom-input" id="lw-custom-pts-input" min="2000" step="100" placeholder="e.g. 2500" />
+                  <button class="lw-custom-submit" id="lw-custom-submit">Redeem</button>
+                </div>
+                <div class="lw-custom-hint" id="lw-custom-hint">Min 2,000 pts · must be a multiple of 100</div>
+              </div>
+              ${vouchers.length ? `<div class="lw-vouchers-heading">Your active vouchers</div>${voucherRows}` : ""}
+            </div>
+
+            
           </div>
+                   
+          </div>
+          <div class="lw-lower">
+          <div class="lw-card">
+            <div class="lw-card-head">
+              <div class="lw-card-title">Transaction history</div>
+            </div>
+            <ul class="lw-tx-list">${txRows}</ul>
+            </div>
+            </div>
         </div>
       </div>`;
 
-    // Tab switching
-    container.querySelectorAll(".lw-tab").forEach((tab) => {
-      tab.addEventListener("click", function () {
-        container.querySelectorAll(".lw-tab").forEach((t) => t.classList.remove("active"));
-        container.querySelectorAll(".lw-panel").forEach((p) => p.classList.remove("active"));
-        this.classList.add("active");
-        document.getElementById(`lw-panel-${this.dataset.panel}`).classList.add("active");
+    // Hero panel quick copy buttons
+    document.getElementById("lw-hero-copy-voucher")?.addEventListener("click", function () {
+      navigator.clipboard.writeText(this.dataset.code).then(() => {
+        this.textContent = "Copied!";
+        setTimeout(() => { this.textContent = "Copy code"; }, 2000);
+      });
+    });
+    document.getElementById("lw-hero-copy-referral")?.addEventListener("click", function () {
+      navigator.clipboard.writeText(referralCode).then(() => {
+        this.textContent = "Copied!";
+        setTimeout(() => { this.textContent = "Copy code"; }, 2000);
       });
     });
 
-    // Copy referral
+    // Copy referral (referral card)
     document.getElementById("lw-copy-referral")?.addEventListener("click", function () {
       navigator.clipboard.writeText(referralCode).then(() => {
         this.textContent = "Copied!"; this.classList.add("copied");
@@ -473,7 +598,7 @@
       });
     });
 
-    // Copy voucher codes
+    // Copy voucher codes (voucher list)
     container.querySelectorAll(".lw-copy-code-btn").forEach((btn) => {
       btn.addEventListener("click", function () {
         navigator.clipboard.writeText(this.dataset.code).then(() => {
@@ -489,70 +614,71 @@
       btn.addEventListener("click", async function () {
         if (redeeming) return;
         const pts = Number(this.dataset.points);
-
-        redeeming = true;
-        const presetsEl = document.getElementById("lw-presets");
-        presetsEl.innerHTML = `<div class="lw-redeem-loading"><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="lw-spinner"></div> Generating your discount code…</div></div>`;
-
-        try {
-          const res = await fetch(`${APP_URL}/api/loyalty-redeem`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ shop: SHOP, customerId: CUSTOMER_ID, pointsToRedeem: pts }),
-          });
-          const result = await res.json();
-
-          if (result.success) {
-            // Update points display
-            const newBalance = result.newBalance;
-            const ptsDisplay = document.getElementById("lw-pts-display");
-            const redeemPts = document.getElementById("lw-redeem-pts");
-            if (ptsDisplay) ptsDisplay.textContent = newBalance.toLocaleString();
-            if (redeemPts) redeemPts.textContent = newBalance.toLocaleString();
-
-            // Show the new voucher
-            presetsEl.innerHTML = `
-              <div style="text-align:center;padding:16px 0 20px;">
-                <div style="font-size:28px;margin-bottom:8px;">🎉</div>
-                <div style="font-size:15px;font-weight:600;color:#0d0d0d;margin-bottom:4px;">Discount code ready!</div>
-                <div style="font-size:13px;color:rgba(0,0,0,0.45);margin-bottom:16px;">Valid for 30 days · One-time use</div>
-              </div>
-              <div class="lw-voucher">
-                <div>
-                  <div class="lw-voucher-code">${result.code}</div>
-                  <div class="lw-voucher-meta">Expires ${formatExpiry(result.expiresAt)} · ${pts} pts redeemed</div>
-                </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                  <div class="lw-voucher-amount">$${result.discountAmount.toFixed(2)}</div>
-                  <button class="lw-copy-code-btn" data-code="${result.code}">Copy</button>
-                </div>
-              </div>
-              <button class="lw-btn" style="background:#f3f4f6;color:#0d0d0d;margin-top:12px;" id="lw-redeem-again">Redeem more points</button>
-            `;
-
-            // Wire copy on new voucher
-            presetsEl.querySelector(".lw-copy-code-btn")?.addEventListener("click", function () {
-              navigator.clipboard.writeText(this.dataset.code).then(() => {
-                this.textContent = "Copied!"; this.classList.add("copied");
-                setTimeout(() => { this.textContent = "Copy"; this.classList.remove("copied"); }, 2000);
-              });
-            });
-
-            // Redeem again — re-init
-            document.getElementById("lw-redeem-again")?.addEventListener("click", () => init());
-          } else {
-            presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ ${result.error || "Something went wrong. Please try again."}</div>`;
-            setTimeout(() => init(), 2000);
-          }
-        } catch (e) {
-          presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ Network error. Please try again.</div>`;
-          setTimeout(() => init(), 2000);
-        } finally {
-          redeeming = false;
-        }
+        await doRedeem(pts);
       });
     });
-    // ── Custom redemption input ──────────────────────────────────────────────────
+
+    async function doRedeem(pts) {
+      redeeming = true;
+      const presetsEl = document.getElementById("lw-presets");
+      const customEl = document.getElementById("lw-custom-redeem");
+      presetsEl.innerHTML = `<div class="lw-redeem-loading"><span class="lw-spinner"></span> Generating your discount code…</div>`;
+      if (customEl) customEl.style.display = "none";
+
+      try {
+        const res = await fetch(`${APP_URL}/api/loyalty-redeem`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ shop: SHOP, customerId: CUSTOMER_ID, pointsToRedeem: pts }),
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          const newBalance = result.newBalance;
+          const redeemPts = document.getElementById("lw-redeem-pts");
+          if (redeemPts) redeemPts.textContent = newBalance.toLocaleString();
+
+          presetsEl.innerHTML = `
+            <div style="text-align:center;padding:16px 0 20px;">
+              <div style="font-size:28px;margin-bottom:8px;">🎉</div>
+              <div style="font-size:15px;font-weight:600;color:var(--lw-ink);margin-bottom:4px;">Discount code ready!</div>
+              <div style="font-size:13px;color:var(--lw-muted);margin-bottom:16px;">Valid for 30 days · One-time use</div>
+            </div>
+            <div class="lw-voucher">
+              <div>
+                <div class="lw-voucher-code">${result.code}</div>
+                <div class="lw-voucher-meta">Expires ${formatExpiry(result.expiresAt)} · ${pts} pts redeemed</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div class="lw-voucher-amount">$${result.discountAmount.toFixed(2)}</div>
+                <button class="lw-copy-code-btn" data-code="${result.code}">Copy</button>
+              </div>
+            </div>
+            <button class="lw-btn" style="background:#f3f4f6;color:var(--lw-ink);margin-top:12px;" id="lw-redeem-again">Redeem more points</button>
+          `;
+
+          presetsEl.querySelector(".lw-copy-code-btn")?.addEventListener("click", function () {
+            navigator.clipboard.writeText(this.dataset.code).then(() => {
+              this.textContent = "Copied!"; this.classList.add("copied");
+              setTimeout(() => { this.textContent = "Copy"; this.classList.remove("copied"); }, 2000);
+            });
+          });
+          document.getElementById("lw-redeem-again")?.addEventListener("click", () => init());
+        } else {
+          presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ ${result.error || "Something went wrong. Please try again."}</div>`;
+          if (customEl) customEl.style.display = "";
+          setTimeout(() => init(), 2000);
+        }
+      } catch (e) {
+        presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ Network error. Please try again.</div>`;
+        if (customEl) customEl.style.display = "";
+        setTimeout(() => init(), 2000);
+      } finally {
+        redeeming = false;
+      }
+    }
+
+    // ── Custom redemption input ──────────────────────────────────────────────
     const customInput = document.getElementById("lw-custom-pts-input");
     const customSubmit = document.getElementById("lw-custom-submit");
     const customHint = document.getElementById("lw-custom-hint");
@@ -583,64 +709,7 @@
         customInput?.classList.add("error");
         return;
       }
-
-      const pts = Number(customInput.value);
-      const presetsEl = document.getElementById("lw-presets");
-      const customEl = document.getElementById("lw-custom-redeem");
-
-      if (presetsEl) presetsEl.innerHTML = `<div class="lw-redeem-loading"><div style="display:flex;align-items:center;justify-content:center;gap:8px;"><div class="lw-spinner"></div> Generating your discount code…</div></div>`;
-      if (customEl) customEl.style.display = "none";
-
-      try {
-        const res = await fetch(`${APP_URL}/api/loyalty-redeem`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shop: SHOP, customerId: CUSTOMER_ID, pointsToRedeem: pts }),
-        });
-        const result = await res.json();
-
-        if (result.success) {
-          const newBalance = result.newBalance;
-          const ptsDisplay = document.getElementById("lw-pts-display");
-          const redeemPts = document.getElementById("lw-redeem-pts");
-          if (ptsDisplay) ptsDisplay.textContent = newBalance.toLocaleString();
-          if (redeemPts) redeemPts.textContent = newBalance.toLocaleString();
-
-          if (presetsEl) presetsEl.innerHTML = `
-        <div style="text-align:center;padding:16px 0 20px;">
-          <div style="font-size:28px;margin-bottom:8px;">🎉</div>
-          <div style="font-size:15px;font-weight:600;color:#0d0d0d;margin-bottom:4px;">Discount code ready!</div>
-          <div style="font-size:13px;color:rgba(0,0,0,0.45);margin-bottom:16px;">Valid for 30 days · One-time use</div>
-        </div>
-        <div class="lw-voucher">
-          <div>
-            <div class="lw-voucher-code">${result.code}</div>
-            <div class="lw-voucher-meta">Expires ${formatExpiry(result.expiresAt)} · ${pts} pts redeemed</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <div class="lw-voucher-amount">$${result.discountAmount.toFixed(2)}</div>
-            <button class="lw-copy-code-btn" data-code="${result.code}">Copy</button>
-          </div>
-        </div>
-        <button class="lw-btn" style="background:#f3f4f6;color:#0d0d0d;margin-top:12px;" id="lw-redeem-again">Redeem more points</button>
-      `;
-          presetsEl?.querySelector(".lw-copy-code-btn")?.addEventListener("click", function () {
-            navigator.clipboard.writeText(this.dataset.code).then(() => {
-              this.textContent = "Copied!"; this.classList.add("copied");
-              setTimeout(() => { this.textContent = "Copy"; this.classList.remove("copied"); }, 2000);
-            });
-          });
-          document.getElementById("lw-redeem-again")?.addEventListener("click", () => init());
-        } else {
-          if (presetsEl) presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ ${result.error || "Something went wrong."}</div>`;
-          if (customEl) customEl.style.display = "";
-          setTimeout(() => init(), 2000);
-        }
-      } catch (e) {
-        if (presetsEl) presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ Network error. Please try again.</div>`;
-        if (customEl) customEl.style.display = "";
-        setTimeout(() => init(), 2000);
-      }
+      await doRedeem(Number(customInput.value));
     });
   }
 
@@ -654,7 +723,7 @@
 
     if (!CUSTOMER_ID) { renderNotLoggedIn(container); return; }
 
-    container.innerHTML = `<div class="lw-root"><div class="lw-loading"><div class="lw-spinner"></div> Loading your rewards…</div></div>`;
+    container.innerHTML = `<div class="lw-root"><div class="lw-loading"><span class="lw-spinner"></span> Loading your rewards…</div></div>`;
 
     try {
       const res = await fetch(`${APP_URL}/api/loyalty-dashboard?shop=${encodeURIComponent(SHOP)}&customerId=${encodeURIComponent(CUSTOMER_ID)}`);

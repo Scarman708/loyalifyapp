@@ -128,7 +128,7 @@ export default function Index() {
       title:  "Enable App Embed in theme",
       desc:   "Open the theme editor, go to App Embeds, and toggle on Loyalty Widget.",
       action: themeNumId
-        ? { label: "Open App Embeds", url: `${adminBase}/themes/${themeNumId}/editor?context=apps`, external: true }
+        ? { label: "Open App Embeds", url: `${adminBase}/themes/current/editor?context=apps`, external: true }
         : null,
     },
     {
@@ -138,7 +138,7 @@ export default function Index() {
       title:  "Add loyalty widget to your storefront",
       desc:   "Use the theme editor to add the Loyalty Register section or CTA block to your homepage or product pages.",
       action: themeNumId
-        ? { label: "Open theme editor", url: `${adminBase}/themes/${themeNumId}/editor`, external: true }
+        ? { label: "Open theme editor", url: `${adminBase}/themes/current/editor`, external: true }
         : null,
     },
     {
