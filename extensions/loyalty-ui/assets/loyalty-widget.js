@@ -8,8 +8,43 @@
   // read referral code from ?ref= URL param once on load
   const REF_CODE = new URLSearchParams(window.location.search).get("ref") || null;
 
-  const TIER_ICONS = { bronze: "🥉", silver: "🥈", gold: "🥇" };
   const TIER_ORDER = ["bronze", "silver", "gold"];
+
+  // ── Icons (inline SVG, currentColor so they inherit theme colors) ──────────
+  function svgIcon(name, size) {
+    const s = size || 16;
+    const tpl = ICONS[name];
+    if (!tpl) return "";
+    return tpl.replace(/\{\{SIZE\}\}/g, s);
+  }
+
+  const ICONS = {
+    lock: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>`,
+
+    star: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.5l2.9 6.6 7.1.7-5.4 4.8 1.6 7-6.2-3.9-6.2 3.9 1.6-7-5.4-4.8 7.1-.7z"></path></svg>`,
+
+    target: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5.2"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg>`,
+
+    gift: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="9" width="18" height="4" rx="1"></rect><rect x="4.5" y="13" width="15" height="8" rx="1"></rect><path d="M12 9v12"></path><path d="M12 9c-1.3-3-3-4.5-4.6-4.5A2 2 0 0 0 5.5 6.6C5.5 8.4 7.6 9 12 9z"></path><path d="M12 9c1.3-3 3-4.5 4.6-4.5A2 2 0 0 1 18.5 6.6C18.5 8.4 16.4 9 12 9z"></path></svg>`,
+
+    ticket: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h15A1.5 1.5 0 0 1 21 8.5v2a2 2 0 0 0 0 3v2a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 15.5v-2a2 2 0 0 0 0-3z"></path><path d="M10 7v10" stroke-dasharray="2 2"></path></svg>`,
+
+    edit: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>`,
+
+    clipboard: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"></rect><rect x="9" y="2.5" width="6" height="3" rx="1"></rect><path d="M9 11h6M9 15h6"></path></svg>`,
+
+    clock: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>`,
+
+    undo: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h9a5 5 0 0 1 0 10h-2"></path><path d="M8 5.5 4 10l4 4.5"></path></svg>`,
+
+    award: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"></circle><path d="M9 13.5 7.5 21l4.5-2.3 4.5 2.3-1.5-7.5"></path></svg>`,
+
+    checkCircle: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.5 2.5 5.5-6"></path></svg>`,
+
+    link: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5l5-5"></path><path d="M13 7.5l1.4-1.4a3.5 3.5 0 0 1 5 5L18 12.5"></path><path d="M11 16.5l-1.4 1.4a3.5 3.5 0 0 1-5-5L6 11.5"></path></svg>`,
+
+    alertTriangle: `<svg width="{{SIZE}}" height="{{SIZE}}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 22 20.5H2z"></path><path d="M12 9.5v5"></path><circle cx="12" cy="17.3" r="0.9" fill="currentColor" stroke="none"></circle></svg>`,
+  };
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   function injectStyles() {
@@ -18,15 +53,23 @@
     style.id = "loyalty-widget-styles";
     style.textContent = `
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+#loyalty-widget-root {
+    --lw-radius:16px;
+    --lw-accent:#d4a017;
+    --lw-bg:#0d0d0d;
+    --lw-text:#fff;
+    --lw-btn-bg:#d4a017;
+    --lw-btn-text:#0d0d0d;
+}
 
       .lw-root {
         /* ── Merchant-configurable, set live from /api/loyalty-style via applyStyle() ── */
-        --lw-radius:    16px;
-        --lw-accent:    #d4a017;
-        --lw-bg:        #0d0d0d;
-        --lw-text:      #ffffff;
-        --lw-btn-bg:    #d4a017;
-        --lw-btn-text:  #0d0d0d;
+        // --lw-radius:    16px;
+        // --lw-accent:    #d4a017;
+        // --lw-bg:        #0d0d0d;
+        // --lw-text:      #ffffff;
+        // --lw-btn-bg:    #d4a017;
+        // --lw-btn-text:  #0d0d0d;
 
         /* ── Derived automatically from the merchant colors above (no fixed hexes) ── */
         --lw-accent-dark: color-mix(in srgb, var(--lw-accent) 65%, black 35%);
@@ -52,6 +95,7 @@
         -webkit-font-smoothing: antialiased;
       }
       .lw-root *{ box-sizing: border-box; }
+      .lw-root svg { display:block; flex-shrink:0; }
 
       .lw-eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:11.5px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color:var(--lw-accent-dark); margin:0 0 10px; }
       .lw-eyebrow::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--lw-accent); }
@@ -75,7 +119,7 @@
       .lw-hero-progress-row .lw-pts-now { font-size:26px; font-weight:600; }
       .lw-track { height:8px; border-radius:999px; background:color-mix(in srgb, var(--lw-text) 28%, transparent); overflow:hidden; }
       .lw-track-fill { height:100%; border-radius:999px; background:var(--lw-text); transition:width 1s cubic-bezier(.4,0,.2,1); }
-      .lw-hero-hint { margin-top:10px; font-size:12.5px; opacity:0.9; }
+      .lw-hero-hint { margin-top:10px; font-size:12.5px; opacity:0.9; display:flex; align-items:center; gap:6px; }
 
       .lw-panel { background:var(--lw-bg); border-radius:var(--lw-radius-lg); padding:24px 26px; color:var(--lw-text); display:flex; flex-direction:column; gap:14px; }
       .lw-panel-heading { font-family:'Space Grotesk',sans-serif; font-size:16px; font-weight:600; }
@@ -93,7 +137,7 @@
       .lw-tier-card.current { background:var(--lw-bg); border-color:var(--lw-bg); color:var(--lw-text); }
       .lw-tier-card.completed { opacity:0.65; }
       .lw-tier-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-      .lw-tier-card-name { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; }
+      .lw-tier-card-name { font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px; }
       .lw-tier-card-status { font-size:11.5px; color:var(--lw-muted); }
       .lw-tier-card.current .lw-tier-card-status { color:color-mix(in srgb, var(--lw-text) 65%, transparent); }
       .lw-tier-badge-sm { font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; padding:3px 8px; border-radius:999px; background:var(--lw-accent-soft); color:var(--lw-accent-dark); }
@@ -105,7 +149,7 @@
 
       /* ── Lower grid ── */
       .lw-lower-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:20px; align-items:start; }
-      .lw-lower { display:grid; grid-template-columns:1fr; gap:20px; align-items:start; }
+      .lw-lower { display:grid; grid-template-columns:1fr; gap:20px; align-items:start;     margin-top: 20px;}
       .lw-card { background:#fff; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-lg); box-shadow:var(--lw-shadow); padding:24px 26px; }
       .lw-card + .lw-card { margin-top:20px; }
       .lw-card-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
@@ -115,7 +159,7 @@
       .lw-tx-list { list-style:none; margin:0; padding:0; max-height:520px; overflow-y:auto; }
       .lw-tx-item { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--lw-line); gap:10px; }
       .lw-tx-item:last-child { border-bottom:none; }
-      .lw-tx-icon { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+      .lw-tx-icon { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
       .lw-tx-meta { flex:1; min-width:0; }
       .lw-tx-desc { font-size:13.5px; font-weight:600; color:var(--lw-ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .lw-tx-date { font-size:11.5px; color:var(--lw-muted-2); margin-top:1px; font-family:'JetBrains Mono',monospace; }
@@ -133,7 +177,7 @@
       .lw-redeem-balance { background:var(--lw-bg); border-radius:var(--lw-radius-md); padding:16px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
       .lw-redeem-balance-pts { font-family:'Space Grotesk',sans-serif; font-size:21px; font-weight:700; color:var(--lw-text); }
       .lw-redeem-balance-label { font-size:11px; color:color-mix(in srgb, var(--lw-text) 55%, transparent); margin-top:2px; text-transform:uppercase; letter-spacing:0.06em; }
-      .lw-redeem-rate-pill { font-size:11px; font-weight:700; background:var(--lw-btn-bg); color:var(--lw-btn-text); padding:7px 14px; border-radius:999px; white-space:nowrap; }
+      .lw-redeem-rate-pill { font-size:11px; font-weight:700; background:var(--lw-btn-bg); color:var(--lw-btn-text); padding:7px 14px; border-radius:999px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
       .lw-presets { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
       .lw-preset { display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-sm); cursor:pointer; transition:all 0.15s; background:#fff; width:100%; font-family:'Inter',sans-serif; }
       .lw-preset:hover:not(.disabled) { border-color:var(--lw-accent); background:color-mix(in srgb, var(--lw-accent) 4%, white); }
@@ -153,7 +197,7 @@
       .lw-custom-input.error { border-color:#b91c1c; }
       .lw-custom-submit { padding:11px 18px; border-radius:var(--lw-radius-sm); border:none; background:var(--lw-btn-bg); color:var(--lw-btn-text); font-size:13px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif; white-space:nowrap; transition:opacity 0.15s; }
       .lw-custom-submit:hover { opacity:0.88; }
-      .lw-custom-hint { font-size:11px; color:var(--lw-muted-2); margin-top:6px; }
+      .lw-custom-hint { font-size:11px; color:var(--lw-muted-2); margin-top:6px; display:flex; align-items:center; gap:5px; }
       .lw-custom-hint.err { color:#b91c1c; }
 
       /* Vouchers */
@@ -177,7 +221,7 @@
       .lw-referral-stat-label { font-size:10.5px; color:color-mix(in srgb, var(--lw-text) 50%, transparent); }
       .lw-referral-code-row { display:flex; gap:8px; align-items:stretch; position:relative; z-index:1; }
       .lw-code-box { flex:1; background:color-mix(in srgb, var(--lw-text) 8%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 15%, transparent); border-radius:var(--lw-radius-sm); padding:10px 14px; font-size:14px; font-weight:600; letter-spacing:0.08em; color:var(--lw-accent); font-family:'JetBrains Mono',monospace; }
-      .lw-copy-btn { background:var(--lw-btn-bg); color:var(--lw-btn-text); border:none; border-radius:var(--lw-radius-sm); padding:10px 16px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.15s; white-space:nowrap; }
+      .lw-copy-btn { background:var(--lw-btn-bg); color:var(--lw-btn-text); border:none; border-radius:var(--lw-radius-sm); padding:10px 16px; font-size:12.5px; font-weight:700; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.15s; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; justify-content:center; }
       .lw-copy-btn:hover { opacity:0.88; }
       .lw-copy-btn.copied { background:var(--lw-accent-dark); color:var(--lw-text); }
       .lw-share-btn-full { margin-top:8px; width:100%; border-radius:var(--lw-radius-sm); padding:11px; position:relative; z-index:1; }
@@ -191,7 +235,7 @@
       .lw-signup p { font-size:14.5px; color:color-mix(in srgb, var(--lw-text) 85%, transparent); margin:0 0 28px; line-height:1.6; position:relative; z-index:1; max-width:380px; }
       .lw-perks { display:flex; gap:12px; margin-bottom:0; flex-wrap:wrap; position:relative; z-index:1; }
       .lw-perk { background:color-mix(in srgb, var(--lw-text) 12%, transparent); border:1px solid color-mix(in srgb, var(--lw-text) 20%, transparent); border-radius:var(--lw-radius-sm); padding:12px 14px; font-size:12.5px; color:var(--lw-text); flex:1; min-width:100px; text-align:center; }
-      .lw-perk-icon { font-size:20px; display:block; margin-bottom:6px; }
+      .lw-perk-icon { display:flex; justify-content:center; margin-bottom:6px; }
       .lw-signup-form { background:#fff; padding:44px 42px; display:flex; flex-direction:column; justify-content:center; }
       .lw-signup-form-label { display:block; font-size:11.5px; font-weight:700; color:var(--lw-muted); margin-bottom:8px; letter-spacing:0.06em; text-transform:uppercase; }
       .lw-signup-form input { width:100%; box-sizing:border-box; background:#f7f7f6; border:1.5px solid var(--lw-line); border-radius:var(--lw-radius-sm); padding:13px 15px; font-size:14px; font-family:'Inter',sans-serif; color:var(--lw-ink); outline:none; transition:border-color 0.15s; margin-bottom:22px; }
@@ -204,6 +248,7 @@
 
       .lw-loading { display:flex; align-items:center; justify-content:center; padding:60px; color:var(--lw-muted-2); font-size:13px; gap:8px; }
       .lw-not-logged-in { text-align:center; padding:60px 24px; background:#f9f9f8; border-radius:var(--lw-radius-lg); border:1px dashed var(--lw-line); }
+      .lw-not-logged-in .lw-not-logged-icon { display:flex; justify-content:center; margin-bottom:8px; color:var(--lw-muted); }
       .lw-not-logged-in p { font-size:14px; color:var(--lw-muted); margin:8px 0 22px; }
       .lw-not-logged-in a { display:inline-block; background:var(--lw-btn-bg); color:var(--lw-btn-text); text-decoration:none; padding:12px 28px; border-radius:var(--lw-radius-sm); font-size:14px; font-weight:700; transition:opacity 0.15s; }
       .lw-not-logged-in a:hover { opacity:0.85; }
@@ -220,6 +265,9 @@
   }
 
   // ── Apply style from API ───────────────────────────────────────────────────
+  // Pulls the merchant's LoyaltySettings (accentColor, bgColor, textColor,
+  // buttonColor, buttonTextColor, borderRadius) and maps them straight onto
+  // the CSS custom properties defined on .lw-root above.
   async function applyStyle() {
     if (!APP_URL || !SHOP) return;
     try {
@@ -228,12 +276,8 @@
       const s = await res.json();
       const root = document.getElementById("loyalty-widget-root");
       if (!root) return;
-      if (s.accentColor) {
-        root.style.setProperty("--lw-accent", s.accentColor);
-      }
-      if (s.bgColor) {
-        root.style.setProperty("--lw-bg", s.bgColor);
-      }
+      if (s.accentColor) root.style.setProperty("--lw-accent", s.accentColor);
+      if (s.bgColor) root.style.setProperty("--lw-bg", s.bgColor);
       if (s.textColor) root.style.setProperty("--lw-text", s.textColor);
       if (s.buttonColor) root.style.setProperty("--lw-btn-bg", s.buttonColor);
       if (s.buttonTextColor) root.style.setProperty("--lw-btn-text", s.buttonTextColor);
@@ -249,12 +293,12 @@
     return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
   function txIcon(type, status) {
-    if (status === "pending") return { emoji: "⏳", bg: "#fef3c7" };
-    if (status === "voided" || status === "deducted") return { emoji: "↩️", bg: "#fee2e2" };
-    if (type === "earn") return { emoji: "⭐", bg: "var(--lw-accent-soft)" };
-    if (type === "redeem") return { emoji: "🎟️", bg: "var(--lw-bg-soft)" };
-    if (type === "adjust") return { emoji: "✏️", bg: "#e0e7ff" };
-    return { emoji: "📋", bg: "#f3f4f6" };
+    if (status === "pending") return { icon: svgIcon("clock", 16), bg: "#fef3c7", color: "#92400e" };
+    if (status === "voided" || status === "deducted") return { icon: svgIcon("undo", 16), bg: "#fee2e2", color: "#b91c1c" };
+    if (type === "earn") return { icon: svgIcon("star", 15), bg: "var(--lw-accent-soft)", color: "var(--lw-accent-dark)" };
+    if (type === "redeem") return { icon: svgIcon("ticket", 16), bg: "var(--lw-bg-soft)", color: "var(--lw-bg)" };
+    if (type === "adjust") return { icon: svgIcon("edit", 15), bg: "#e0e7ff", color: "#4338ca" };
+    return { icon: svgIcon("clipboard", 15), bg: "#f3f4f6", color: "#6b7280" };
   }
   function txPointsClass(type, status) {
     if (status === "pending") return "pending";
@@ -292,7 +336,6 @@
     const currentIdx = TIER_ORDER.indexOf(currentTier);
 
     const cards = TIER_ORDER.map((t, i) => {
-      const icon = TIER_ICONS[t];
       const label = t.charAt(0).toUpperCase() + t.slice(1);
       let stateClass = "upcoming";
       let badgeClass = "";
@@ -325,7 +368,7 @@
 
       return `<div class="lw-tier-card ${stateClass}">
         <div class="lw-tier-card-head">
-          <div class="lw-tier-card-name">${icon} ${label}</div>
+          <div class="lw-tier-card-name">${svgIcon("award", 16)} ${label}</div>
           ${i <= currentIdx ? `<span class="lw-tier-badge-sm ${badgeClass}">${badgeLabel}</span>` : ""}
         </div>
         <div class="lw-tier-card-status">${status}</div>
@@ -341,7 +384,7 @@
     container.innerHTML = `
       <div class="lw-root">
         <div class="lw-not-logged-in">
-          <div style="font-size:32px;margin-bottom:8px;">🔒</div>
+          <div class="lw-not-logged-icon">${svgIcon("lock", 32)}</div>
           <p>Log in to join our loyalty program and start earning rewards.</p>
           <a href="/account/login">Log in to your account</a>
         </div>
@@ -356,13 +399,13 @@
     <div class="lw-root">
       <div class="lw-signup-wrap">
         <div class="lw-signup">
-          <div class="lw-signup-badge">✦ New — Loyalty Program</div>
+          <div class="lw-signup-badge">${svgIcon("star", 12)} New — Loyalty Program</div>
           <h2>Earn rewards on every purchase</h2>
           <p>Join thousands of members earning points, unlocking tiers, and getting exclusive perks.</p>
           <div class="lw-perks">
-            <div class="lw-perk"><span class="lw-perk-icon">⭐</span>Earn points</div>
-            <div class="lw-perk"><span class="lw-perk-icon">🎯</span>Unlock tiers</div>
-            <div class="lw-perk"><span class="lw-perk-icon">🎁</span>Get rewards</div>
+            <div class="lw-perk"><span class="lw-perk-icon">${svgIcon("star", 20)}</span>Earn points</div>
+            <div class="lw-perk"><span class="lw-perk-icon">${svgIcon("target", 20)}</span>Unlock tiers</div>
+            <div class="lw-perk"><span class="lw-perk-icon">${svgIcon("gift", 20)}</span>Get rewards</div>
           </div>
         </div>
         <div class="lw-signup-form">
@@ -405,7 +448,6 @@
     const referral = data.referral || {};
     const referralCode = referral.code || '';
     const tier = customer.tier || "bronze";
-    const icon = TIER_ICONS[tier] || "🥉";
     const name = customer.firstName || "Member";
     const currentPoints = customer.points;
 
@@ -419,7 +461,7 @@
     ` : `
       <div class="lw-hero-progress-row"><span class="lw-pts-now">${currentPoints.toLocaleString()}</span><span>pts</span></div>
       <div class="lw-track"><div class="lw-track-fill" style="width:100%"></div></div>
-      <div class="lw-hero-hint">🏆 You've reached our highest tier!</div>
+      <div class="lw-hero-hint">${svgIcon("award", 14)} You've reached our highest tier!</div>
     `;
 
     const topVoucher = vouchers[0];
@@ -435,9 +477,9 @@
 
     const txRows = transactions.length
       ? transactions.map((tx) => {
-        const { emoji, bg } = txIcon(tx.type, tx.status);
+        const { icon, bg, color } = txIcon(tx.type, tx.status);
         return `<li class="lw-tx-item">
-            <div class="lw-tx-icon" style="background:${bg}">${emoji}</div>
+            <div class="lw-tx-icon" style="background:${bg};color:${color}">${icon}</div>
             <div class="lw-tx-meta">
               <div class="lw-tx-desc">${txDesc(tx)}</div>
               <div class="lw-tx-date">${formatDate(tx.createdAt)}</div>
@@ -486,7 +528,7 @@
                 <div class="lw-hero-greeting">Current tier</div>
                 <div class="lw-hero-tier">${tier}</div>
               </div>
-              <div class="lw-hero-icon">${icon}</div>
+              <div class="lw-hero-icon">${svgIcon("award", 20)}</div>
             </div>
             <div class="lw-hero-progress">${heroProgress}</div>
           </div>
@@ -524,7 +566,7 @@
                 <div class="lw-code-box">${referralCode}</div>
                 <button class="lw-copy-btn" id="lw-copy-referral">Copy</button>
               </div>
-              <button class="lw-copy-btn lw-share-btn-full" id="lw-share-btn">🔗 Copy share link</button>
+              <button class="lw-copy-btn lw-share-btn-full" id="lw-share-btn">${svgIcon("link", 14)} Copy share link</button>
             </div>
          
 
@@ -532,7 +574,7 @@
             <div class="lw-card">
               <div class="lw-card-head">
                 <div class="lw-card-title">Redeem points</div>
-                <span class="lw-redeem-rate-pill">${icon} ${tier} rate</span>
+                <span class="lw-redeem-rate-pill">${svgIcon("award", 13)} ${tier} rate</span>
               </div>
               <div class="lw-redeem-balance">
                 <div>
@@ -593,8 +635,8 @@
     document.getElementById("lw-share-btn")?.addEventListener("click", function () {
       const shareUrl = `${window.location.origin}/pages/loyalty-rewards?ref=${encodeURIComponent(referralCode)}`;
       navigator.clipboard.writeText(shareUrl).then(() => {
-        this.textContent = "✓ Link copied!"; this.classList.add("copied");
-        setTimeout(() => { this.textContent = "🔗 Copy share link"; this.classList.remove("copied"); }, 2000);
+        this.innerHTML = `${svgIcon("checkCircle", 14)} Link copied!`; this.classList.add("copied");
+        setTimeout(() => { this.innerHTML = `${svgIcon("link", 14)} Copy share link`; this.classList.remove("copied"); }, 2000);
       });
     });
 
@@ -640,7 +682,7 @@
 
           presetsEl.innerHTML = `
             <div style="text-align:center;padding:16px 0 20px;">
-              <div style="font-size:28px;margin-bottom:8px;">🎉</div>
+              <div style="display:flex;justify-content:center;margin-bottom:8px;color:var(--lw-accent-dark);">${svgIcon("checkCircle", 30)}</div>
               <div style="font-size:15px;font-weight:600;color:var(--lw-ink);margin-bottom:4px;">Discount code ready!</div>
               <div style="font-size:13px;color:var(--lw-muted);margin-bottom:16px;">Valid for 30 days · One-time use</div>
             </div>
@@ -665,12 +707,12 @@
           });
           document.getElementById("lw-redeem-again")?.addEventListener("click", () => init());
         } else {
-          presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ ${result.error || "Something went wrong. Please try again."}</div>`;
+          presetsEl.innerHTML = `<div class="lw-tx-empty" style="display:flex;align-items:center;justify-content:center;gap:6px;">${svgIcon("alertTriangle", 14)} ${result.error || "Something went wrong. Please try again."}</div>`;
           if (customEl) customEl.style.display = "";
           setTimeout(() => init(), 2000);
         }
       } catch (e) {
-        presetsEl.innerHTML = `<div class="lw-tx-empty">⚠ Network error. Please try again.</div>`;
+        presetsEl.innerHTML = `<div class="lw-tx-empty" style="display:flex;align-items:center;justify-content:center;gap:6px;">${svgIcon("alertTriangle", 14)} Network error. Please try again.</div>`;
         if (customEl) customEl.style.display = "";
         setTimeout(() => init(), 2000);
       } finally {
@@ -696,7 +738,7 @@
 
     customInput?.addEventListener("input", function () {
       const { ok, msg } = validateCustom(this.value);
-      customHint.textContent = msg;
+      customHint.innerHTML = (ok ? "" : svgIcon("alertTriangle", 12)) + msg;
       customHint.className = "lw-custom-hint" + (ok ? "" : " err");
       this.classList.toggle("error", !ok && this.value !== "");
     });
@@ -704,7 +746,7 @@
     customSubmit?.addEventListener("click", async function () {
       const { ok, msg } = validateCustom(customInput?.value);
       if (!ok) {
-        customHint.textContent = msg;
+        customHint.innerHTML = svgIcon("alertTriangle", 12) + msg;
         customHint.className = "lw-custom-hint err";
         customInput?.classList.add("error");
         return;
