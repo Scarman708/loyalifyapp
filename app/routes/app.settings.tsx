@@ -3,21 +3,30 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useRef, useState } from "react";
 import { authenticate } from "../shopify.server";
 import { getLoyaltySettings, saveLoyaltySettings } from "../services/loyaltySettings.server";
+import { getTierConfig, saveTierConfig } from "../services/tierService";
 
 declare global {
   namespace JSX { interface IntrinsicElements { [elemName: string]: any; } }
 }
 
+// ── Shared design tokens (keeps every card/control on the same scale) ───────
+const RADIUS_CONTAINER = 14; // outer cards / panels
+const RADIUS_CONTROL   = 8;  // inputs, small badges
+const RADIUS_PILL      = 999;
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
-  const settings = await getLoyaltySettings(session.shop);
 
-  // Fetch store currency
-  const res      = await admin.graphql(`query { shop { currencyCode } }`);
-  const data     = await res.json();
-  const currency = data.data?.shop?.currencyCode ?? "USD";
+  const [settings, tierConfig, shopRes] = await Promise.all([
+    getLoyaltySettings(session.shop),
+    getTierConfig(session.shop),
+    admin.graphql(`query { shop { currencyCode } }`),
+  ]);
 
-  return { settings, currency };
+  const shopData = await shopRes.json();
+  const currency = shopData.data?.shop?.currencyCode ?? "USD";
+
+  return { settings, tierConfig, currency };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -29,6 +38,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const tab     = raw.tab as string;
   const current = await getLoyaltySettings(session.shop);
+
+  if (tab === "tiers") {
+    const silver = Number(raw.silver);
+    const gold   = Number(raw.gold);
+    const errors: string[] = [];
+    if (silver <= 0)        errors.push("Silver threshold must be greater than Bronze (0).");
+    if (gold   <= silver)   errors.push("Gold threshold must be greater than Silver.");
+    if (silver > 1_000_000) errors.push("Silver threshold seems unreasonably high.");
+    if (gold   > 1_000_000) errors.push("Gold threshold seems unreasonably high.");
+    if (errors.length) return { ok: false, errors, tab: "tiers" };
+
+    await saveTierConfig(session.shop, { bronze: 0, silver, gold });
+    return { ok: true, errors: [], tab: "tiers" };
+  }
 
   if (tab === "style") {
     await saveLoyaltySettings(session.shop, {
@@ -100,7 +123,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { ok: true, errors: [], tab: "earning" };
 };
 
-const inputStyle: React.CSSProperties = { padding: "8px 12px", border: "1px solid #ccc", borderRadius: "6px", fontSize: "14px" };
+const inputStyle: React.CSSProperties = { padding: "8px 12px", border: "1px solid #ccc", borderRadius: RADIUS_CONTROL, fontSize: "14px" };
+
+const TIER_META = {
+  bronze: { label: "Bronze", emoji: "🥉", description: "Entry tier — all new members start here.",              color: "#D85A30", bg: "#FFF4F0" },
+  silver: { label: "Silver", emoji: "🥈", description: "Mid tier — unlocked after reaching the Silver threshold.", color: "#5F5E5A", bg: "#F5F5F4" },
+  gold:   { label: "Gold",   emoji: "🥇", description: "Top tier — your most loyal customers.",                  color: "#BA7517", bg: "#FFFBF0" },
+} as const;
 
 function ColorField({ label, desc, value, onChange }: { label: string; desc: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -109,10 +138,10 @@ function ColorField({ label, desc, value, onChange }: { label: string; desc: str
       <div style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>{desc}</div>
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
-          style={{ width: "44px", height: "36px", padding: "2px", border: "1px solid #ccc", borderRadius: "6px", cursor: "pointer" }} />
+          style={{ width: "44px", height: "36px", padding: "2px", border: "1px solid #ccc", borderRadius: RADIUS_CONTROL, cursor: "pointer" }} />
         <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
           style={{ ...inputStyle, width: "110px", fontFamily: "monospace" }} />
-        <div style={{ width: "36px", height: "36px", borderRadius: "6px", background: value, border: "1px solid #ddd", flexShrink: 0 }} />
+        <div style={{ width: "36px", height: "36px", borderRadius: RADIUS_CONTROL, background: value, border: "1px solid #ddd", flexShrink: 0 }} />
       </div>
     </div>
   );
@@ -128,12 +157,12 @@ function formatCurrency(amount: number, currency: string): string {
 }
 
 export default function SettingsPage() {
-  const { settings, currency } = useLoaderData<typeof loader>();
+  const { settings, tierConfig, currency } = useLoaderData<typeof loader>();
   const fetcher  = useFetcher<typeof action>();
   const isSaving = fetcher.state !== "idle";
   const result   = fetcher.data;
 
-  const [activeTab, setActiveTab] = useState<"earning"|"redemption"|"referral"|"style">("earning");
+  const [activeTab, setActiveTab] = useState<"tiers"|"earning"|"redemption"|"referral"|"style">("tiers");
 
   const ppcRef    = useRef<HTMLInputElement>(null);
   const oatRef    = useRef<HTMLSelectElement>(null);
@@ -147,6 +176,10 @@ export default function SettingsPage() {
   const preset1Ref    = useRef<HTMLInputElement>(null);
   const preset2Ref    = useRef<HTMLInputElement>(null);
   const preset3Ref    = useRef<HTMLInputElement>(null);
+
+  // Tier thresholds — controlled, so the ladder preview updates live as you type
+  const [tierSilver, setTierSilver] = useState(tierConfig.silver ?? 1000);
+  const [tierGold,   setTierGold]   = useState(tierConfig.gold   ?? 5000);
 
   // Redemption live state — drives the preview table
   const [bronzeRate, setBronzeRate] = useState(settings.bronzeRedemptionRate ?? 100);
@@ -167,6 +200,12 @@ export default function SettingsPage() {
   const [buttonColor,     setButtonColor]     = useState(settings.buttonColor     ?? "#d4a017");
   const [buttonTextColor, setButtonTextColor] = useState(settings.buttonTextColor ?? "#0d0d0d");
   const [borderRadius,    setBorderRadius]    = useState(settings.borderRadius    ?? 16);
+
+  const handleSaveTiers = () => fetcher.submit({
+    tab: "tiers",
+    silver: tierSilver,
+    gold: tierGold,
+  }, { method: "POST", encType: "application/json" });
 
   const handleSaveEarning = () => fetcher.submit({
     tab: "earning",
@@ -214,6 +253,7 @@ export default function SettingsPage() {
       <s-section>
         <s-card>
           <div style={{ display: "flex", borderBottom: "1px solid #e1e3e5", marginBottom: "24px" }}>
+            <button style={tabStyle(activeTab === "tiers")}      onClick={() => setActiveTab("tiers")}>Membership Tiers</button>
             <button style={tabStyle(activeTab === "earning")}    onClick={() => setActiveTab("earning")}>Earning Rules</button>
             <button style={tabStyle(activeTab === "redemption")} onClick={() => setActiveTab("redemption")}>Redemption</button>
             <button style={tabStyle(activeTab === "referral")}   onClick={() => setActiveTab("referral")}>Referral</button>
@@ -221,14 +261,151 @@ export default function SettingsPage() {
           </div>
 
           {showSuccess && (
-            <div style={{ background: "#EAF3DE", border: "1px solid #97C459", borderRadius: "8px", padding: "12px 16px", marginBottom: "20px", color: "#3B6D11", fontSize: "14px" }}>
+            <div style={{ background: "#EAF3DE", border: "1px solid #97C459", borderRadius: RADIUS_CONTROL, padding: "12px 16px", marginBottom: "20px", color: "#3B6D11", fontSize: "14px" }}>
               ✓ Settings saved successfully.
             </div>
           )}
           {showErrors && (
-            <div style={{ background: "#FCEBEB", border: "1px solid #F09595", borderRadius: "8px", padding: "12px 16px", marginBottom: "20px", color: "#A32D2D", fontSize: "14px" }}>
+            <div style={{ background: "#FCEBEB", border: "1px solid #F09595", borderRadius: RADIUS_CONTROL, padding: "12px 16px", marginBottom: "20px", color: "#A32D2D", fontSize: "14px" }}>
               {result!.errors!.map((e: string) => <div key={e}>⚠ {e}</div>)}
             </div>
+          )}
+
+          {/* ── MEMBERSHIP TIERS TAB ── */}
+          {activeTab === "tiers" && (
+            <s-stack direction="block" gap="large-400">
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "15px", marginBottom: "6px" }}>How tiers work</div>
+                <div style={{ fontSize: "13px", color: "#666", lineHeight: 1.6 }}>
+                  Tiers are based on <strong>lifetime points earned</strong> — they never drop when
+                  a customer redeems points. Crossing a threshold updates their tier in your database,
+                  syncs to the <code>loyalty.tier</code> customer metafield, and fires a tier-change event.
+                </div>
+              </div>
+
+              {/* Live tier ladder preview */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+                {(["bronze", "silver", "gold"] as const).map((t, i) => {
+                  const meta = TIER_META[t];
+                  const from = t === "bronze" ? 0 : t === "silver" ? tierSilver : tierGold;
+                  const to   = t === "bronze" ? tierSilver - 1 : t === "silver" ? tierGold - 1 : null;
+                  return (
+                    <div key={t} style={{
+                      position: "relative",
+                      background: meta.bg,
+                      border: `1px solid ${meta.color}33`,
+                      borderRadius: RADIUS_CONTAINER,
+                      padding: "20px 18px",
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                    }}>
+                      <div style={{
+                        width: "40px", height: "40px", borderRadius: RADIUS_CONTROL + 2,
+                        background: "#fff", border: `1px solid ${meta.color}33`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "20px", marginBottom: "14px",
+                      }}>
+                        {meta.emoji}
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: "15px", color: meta.color, marginBottom: "4px" }}>
+                        {meta.label}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#666", lineHeight: 1.5, marginBottom: "14px", minHeight: "32px" }}>
+                        {meta.description}
+                      </div>
+                      <div style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        fontSize: "11px", fontWeight: 600, color: meta.color,
+                        background: "#fff", border: `1px solid ${meta.color}33`,
+                        borderRadius: RADIUS_PILL, padding: "4px 10px",
+                      }}>
+                        {to !== null ? `${from.toLocaleString()}–${to.toLocaleString()} pts` : `${from.toLocaleString()}+ pts`}
+                      </div>
+                      {i < 2 && (
+                        <div style={{
+                          position: "absolute", right: "-20px", top: "50%", transform: "translateY(-50%)",
+                          fontSize: "16px", color: "#d1d5db",
+                        }}>
+                          →
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Threshold editor */}
+              <div style={{
+                background: "#fafafa", border: "1px solid #efefef",
+                borderRadius: RADIUS_CONTAINER, padding: "20px",
+              }}>
+                <div style={{ fontWeight: 600, fontSize: "14px", marginBottom: "16px" }}>Thresholds</div>
+                <s-stack direction="block" gap="large-300">
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div style={{
+                      width: "34px", height: "34px", borderRadius: RADIUS_CONTROL, flexShrink: 0,
+                      background: "#fff", border: `1px solid ${TIER_META.bronze.color}33`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+                    }}>
+                      {TIER_META.bronze.emoji}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#0d0d0d" }}>Bronze</div>
+                      <div style={{ fontSize: "12px", color: "#888" }}>Entry tier — always starts at 0</div>
+                    </div>
+                    <input type="number" value={0} readOnly
+                      style={{ ...inputStyle, width: "120px", background: "#f3f4f6", color: "#9ca3af" }} />
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div style={{
+                      width: "34px", height: "34px", borderRadius: RADIUS_CONTROL, flexShrink: 0,
+                      background: "#fff", border: `1px solid ${TIER_META.silver.color}33`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+                    }}>
+                      {TIER_META.silver.emoji}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#0d0d0d" }}>Silver starts at</div>
+                      <div style={{ fontSize: "12px", color: "#888" }}>Lifetime points required</div>
+                    </div>
+                    <input
+                      type="number" min={1} max={999999} required
+                      value={tierSilver}
+                      onChange={(e) => setTierSilver(Number(e.target.value) || 1)}
+                      style={{ ...inputStyle, width: "120px" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                    <div style={{
+                      width: "34px", height: "34px", borderRadius: RADIUS_CONTROL, flexShrink: 0,
+                      background: "#fff", border: `1px solid ${TIER_META.gold.color}33`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+                    }}>
+                      {TIER_META.gold.emoji}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#0d0d0d" }}>Gold starts at</div>
+                      <div style={{ fontSize: "12px", color: "#888" }}>Lifetime points required</div>
+                    </div>
+                    <input
+                      type="number" min={2} max={1000000} required
+                      value={tierGold}
+                      onChange={(e) => setTierGold(Number(e.target.value) || 2)}
+                      style={{ ...inputStyle, width: "120px" }}
+                    />
+                  </div>
+
+                </s-stack>
+              </div>
+
+              <div>
+                <s-button variant="primary" onClick={handleSaveTiers} {...(isSaving ? { loading: true } : {})}>
+                  {isSaving ? "Saving…" : "Save tier thresholds"}
+                </s-button>
+              </div>
+            </s-stack>
           )}
 
           {/* ── EARNING TAB ── */}
@@ -250,7 +427,7 @@ export default function SettingsPage() {
                   <option value="total">Total (including shipping &amp; tax)</option>
                 </select>
               </div>
-              <div style={{ background: "#F6F6F7", borderRadius: "8px", padding: "12px 16px", fontSize: "13px", color: "#444" }}>
+              <div style={{ background: "#F6F6F7", borderRadius: RADIUS_CONTROL, padding: "12px 16px", fontSize: "13px", color: "#444" }}>
                 <strong>Formula:</strong> <code>floor(orderAmount × pointsPerCurrency × tierMultiplier)</code><br />
                 <span style={{ color: "#888" }}>Example: {formatCurrency(50, currency)} order · 10 pts/{currency} · Gold 1.5× = <strong>750 pts</strong></span>
               </div>
@@ -316,7 +493,7 @@ export default function SettingsPage() {
                     { ref: preset2Ref, label: "Medium", val: p2, set: setP2 },
                     { ref: preset3Ref, label: "Large",  val: p3, set: setP3 },
                   ].map(({ ref, label, val, set }) => (
-                    <div key={label} style={{ background: "#f9f9f9", borderRadius: "8px", padding: "14px 16px", minWidth: "150px" }}>
+                    <div key={label} style={{ background: "#f9f9f9", borderRadius: RADIUS_CONTAINER, padding: "14px 16px", minWidth: "150px" }}>
                       <div style={{ fontSize: "12px", color: "#888", marginBottom: "6px" }}>{label} voucher</div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <input
@@ -339,7 +516,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Live preview table */}
-              <div style={{ background: "#F6F6F7", borderRadius: "8px", padding: "16px" }}>
+              <div style={{ background: "#F6F6F7", borderRadius: RADIUS_CONTAINER, padding: "16px" }}>
                 <div style={{ fontWeight: 600, marginBottom: "10px", fontSize: "13px" }}>Discount value preview ({currency})</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                   <thead>
@@ -370,7 +547,7 @@ export default function SettingsPage() {
           {/* ── REFERRAL TAB ── */}
           {activeTab === "referral" && (
             <s-stack direction="block" gap="large-400">
-              <div style={{ background: "#f0f4ff", border: "1px solid #c7d7ff", borderRadius: "8px", padding: "12px 16px", fontSize: "13px", color: "#1d4ed8" }}>
+              <div style={{ background: "#f0f4ff", border: "1px solid #c7d7ff", borderRadius: RADIUS_CONTROL, padding: "12px 16px", fontSize: "13px", color: "#1d4ed8" }}>
                 ℹ️ Customers share their unique referral code. When a friend signs up using it, both get bonus points.
               </div>
 
@@ -408,7 +585,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div style={{ background: "#F6F6F7", borderRadius: "8px", padding: "14px 16px", fontSize: "13px" }}>
+              <div style={{ background: "#F6F6F7", borderRadius: RADIUS_CONTROL, padding: "14px 16px", fontSize: "13px" }}>
                 <strong>Example:</strong> Referee places a {currency ?? ""} 50 order earning 500 pts base.
                 Referrer gets <strong>{Math.floor(500 * referrerPct / 100)} pts</strong> bonus.
                 Referee gets <strong>{Math.floor(500 * refereePct / 100)} pts</strong> extra bonus.
@@ -418,7 +595,7 @@ export default function SettingsPage() {
             </s-stack>
           )}
 
-  
+
           {activeTab === "style" && (
             <div style={{ display: "flex", gap: "40px", alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ flex: "1", minWidth: "280px" }}>
@@ -441,11 +618,11 @@ export default function SettingsPage() {
               <div style={{ flex: "1", minWidth: "260px" }}>
                 <div style={{ fontSize: "12px", fontWeight: 600, color: "#888", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "12px" }}>Live preview</div>
                 <div style={{ background: bgColor, borderRadius: `${borderRadius}px`, padding: "28px 24px", fontFamily: "'DM Sans', sans-serif", boxShadow: "0 4px 24px rgba(0,0,0,0.12)" }}>
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: `${accentColor}22`, border: `1px solid ${accentColor}66`, borderRadius: "999px", padding: "3px 10px", fontSize: "10px", fontWeight: 600, color: accentColor, textTransform: "uppercase", marginBottom: "14px" }}>✦ Loyalty</div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", background: `${accentColor}22`, border: `1px solid ${accentColor}66`, borderRadius: RADIUS_PILL, padding: "3px 10px", fontSize: "10px", fontWeight: 600, color: accentColor, textTransform: "uppercase", marginBottom: "14px" }}>✦ Loyalty</div>
                   <div style={{ color: textColor, fontSize: "36px", fontWeight: 700, lineHeight: 1, marginBottom: "4px" }}>1,250</div>
                   <div style={{ color: `${textColor}88`, fontSize: "13px", marginBottom: "16px" }}>points available</div>
-                  <div style={{ height: "6px", background: `${textColor}18`, borderRadius: "999px", overflow: "hidden", marginBottom: "16px" }}>
-                    <div style={{ width: "62%", height: "100%", background: accentColor, borderRadius: "999px" }} />
+                  <div style={{ height: "6px", background: `${textColor}18`, borderRadius: RADIUS_PILL, overflow: "hidden", marginBottom: "16px" }}>
+                    <div style={{ width: "62%", height: "100%", background: accentColor, borderRadius: RADIUS_PILL }} />
                   </div>
                   <div style={{ background: buttonColor, color: buttonTextColor, borderRadius: `${Math.max(4, borderRadius - 4)}px`, padding: "11px 20px", fontSize: "14px", fontWeight: 600, textAlign: "center" }}>Redeem Points</div>
                 </div>

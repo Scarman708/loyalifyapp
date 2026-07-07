@@ -381,7 +381,6 @@ export default function Index() {
         {[
           { label: "📊 Analytics",  url: "/app/analytics" },
           { label: "⚙️ Settings",   url: "/app/settings"  },
-          { label: "🎯 Tiers",      url: "/app/tiers"     },
         ].map(({ label, url }) => (
           <div key={url} style={{ marginBottom: "8px" }}>
             <Link to={url} style={{
