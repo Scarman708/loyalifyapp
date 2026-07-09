@@ -443,7 +443,7 @@ export default function Index() {
 
       {/* ── Stats ── */}
       <s-section>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px" }}>
           {[
             { icon: "members" as const, label: "Loyalty members",  value: memberCount.toLocaleString(), sub: "enrolled customers" },
             { icon: "status" as const,  label: "Program status",   value: hasSettings ? "Active" : "Not configured", sub: hasSettings ? "earning rules set" : "complete setup below", warn: !hasSettings },
@@ -596,7 +596,7 @@ export default function Index() {
       {/* ── Widget guide ── */}
       <s-section heading="Adding the widget to your storefront">
         <div style={{ ...cardShell, padding: "18px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px" }}>
             {widgetGuide.map(({ icon, title, desc, tag, tagOk }) => (
               <div key={title} style={{ background: COLOR.surfaceSubtle, border: `1px solid ${COLOR.borderSubtle}`, borderRadius: "10px", padding: "16px" }}>
                 <div style={{
