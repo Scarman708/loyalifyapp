@@ -132,24 +132,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-// ── Action ────────────────────────────────────────────────────────────────────
-// Two intents share this route:
-//  - "toggle"  (default, back-compat): save a manual checklist checkbox
-//  - "recheck": re-run the live storefront detection on demand, so a merchant
-//    who just flipped the theme embed doesn't have to reload the whole page
+// ── Action — save manual check toggles (fallback only, when auto-detection is unavailable) ──
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
-  const body = await request.json();
-
-  if (body.intent === "recheck") {
-    // session.shop is already the *.myshopify.com domain for this store.
-    const result = await detectStorefrontFeatures(shop);
-    return { ok: true, intent: "recheck", embedDetected: result.embedDetected, ctaDetected: result.ctaDetected };
-  }
-
-  const { key, value } = body;
+  const { key, value } = await request.json();
 
   const existing = await db.loyaltySettings.findUnique({ where: { shop } });
   const current  = existing ? (JSON.parse((existing as any).manualChecks ?? "{}")) : {};
@@ -165,7 +153,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.error("[homepage] manualChecks save failed — run migration:", e);
   }
 
-  return { ok: true, intent: "toggle", key, value };
+  return { ok: true };
 };
 
 // ── Icons (line icons, replace all emoji) ─────────────────────────────────────
@@ -281,43 +269,6 @@ const IconSparkles = ({ size = 15, color = "currentColor" }: IconProps) => (
   </svg>
 );
 
-const IconChevronDown = ({ size = 14, color = "currentColor" }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 6.5 8 10.5 12 6.5" />
-  </svg>
-);
-
-const IconRefresh = ({ size = 13, color = "currentColor" }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M13.5 8A5.5 5.5 0 1 1 11.9 4" />
-    <path d="M13.5 3.5v3h-3" />
-  </svg>
-);
-
-const IconInfo = ({ size = 13, color = "currentColor" }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="8" cy="8" r="6.3" />
-    <path d="M8 7.3v4M8 5.1v.1" />
-  </svg>
-);
-
-const IconStorefront = ({ size = 15, color = "currentColor" }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2.5 7.5 3.7 3h12.6l1.2 4.5" />
-    <path d="M2.5 7.5a2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0 2 2 0 0 0 4 0" />
-    <path d="M4 7.8V17h12V7.8" />
-    <path d="M8 17v-4.5h4V17" />
-  </svg>
-);
-
-const IconHelp = ({ size = 15, color = "currentColor" }: IconProps) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="10" cy="10" r="7.5" />
-    <path d="M7.7 7.8a2.3 2.3 0 1 1 3.4 2c-.7.45-1.1.8-1.1 1.7" />
-    <path d="M10 14.2v.1" />
-  </svg>
-);
-
 // ── Design tokens (shared with analytics page) ────────────────────────────────
 
 const COLOR = {
@@ -334,8 +285,6 @@ const COLOR = {
   criticalBg: "#FCEBE9",
   accent: "#2C6ECB",
   accentBg: "#EDF3FC",
-  warning: "#8A5C00",
-  warningBg: "#FFF4E4",
 };
 
 const cardShell: React.CSSProperties = {
@@ -358,13 +307,6 @@ const secondaryBtn: React.CSSProperties = {
   border: `1px solid ${COLOR.border}`,
 };
 
-const ghostBtn: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: "5px",
-  padding: "6px 11px", borderRadius: "7px", fontSize: "12.5px", fontWeight: 600,
-  background: COLOR.surface, color: COLOR.textSecondary,
-  border: `1px solid ${COLOR.border}`, cursor: "pointer",
-};
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Index() {
@@ -372,14 +314,10 @@ export default function Index() {
     shop, memberCount, hasSettings, loyaltyPage, manualChecks,
     earningConfigured, redemptionConfigured, embedDetected, ctaDetected,
   } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
 
-  const toggleFetcher  = useFetcher();
-  const recheckFetcher = useFetcher<typeof action>();
-
-  const storeDomain  = (shop as any).myshopifyDomain ?? "";
-  const storeHandle  = storeDomain.replace(".myshopify.com", "");
-  const storeLabel   = (shop as any).name || storeHandle;
-  const adminBase    = `https://admin.shopify.com/store/${storeHandle}`;
+  const storeDomain = (shop as any).myshopifyDomain ?? "";
+  const adminBase   = `https://admin.shopify.com/store/${storeDomain.replace(".myshopify.com", "")}`;
 
   // Manual fallback state — only ever read/used when live detection returns null
   // (e.g. password-protected dev store, storefront fetch failed).
@@ -391,61 +329,23 @@ export default function Index() {
   const toggle = (key: string) => {
     const next = { ...checks, [key]: !checks[key] };
     setChecks(next);
-    toggleFetcher.submit(
-      { intent: "toggle", key, value: next[key] },
+    fetcher.submit(
+      { key, value: next[key] },
       { method: "POST", encType: "application/json" },
     );
   };
 
-  const runRecheck = () => {
-    recheckFetcher.submit(
-      { intent: "recheck" },
-      { method: "POST", encType: "application/json" },
-    );
-  };
-  const isRechecking = recheckFetcher.state !== "idle";
-  const recheckResult = recheckFetcher.data?.intent === "recheck" ? recheckFetcher.data : null;
+  const embedAuto = embedDetected !== null;
+  const ctaAuto   = ctaDetected !== null;
 
-  // Live-detected values, overridden in place if a manual recheck has run
-  const embedDetectedLive = recheckResult ? recheckResult.embedDetected : embedDetected;
-  const ctaDetectedLive   = recheckResult ? recheckResult.ctaDetected   : ctaDetected;
-
-  const embedAuto = embedDetectedLive !== null;
-  const ctaAuto   = ctaDetectedLive !== null;
-
-  const previewPathParam = loyaltyPage ? `%2Fpages%2F${loyaltyPage.handle}` : "";
-  const themeEditorPreviewPath = previewPathParam ? `&previewPath=${previewPathParam}` : "";
-  const themeEditorBaseUrl = `${adminBase}/themes/current/editor`;
-
-  // Order follows real dependency: configure the program before pointing
-  // customers at a storefront that isn't ready to earn/redeem yet.
   const checklist = [
     {
       key:    "auto_install",
       auto:   true,
-      done:   true,
-      title:  "App installed",
-      desc:   "Loyalify is installed and connected to your store.",
+      done:   memberCount > 0 || hasSettings,
+      title:  "App installed & configured",
+      desc:   "Your loyalty program is active and ready to accept members.",
       action: null,
-      manual: false,
-    },
-    {
-      key:    "earning_configured",
-      auto:   true,
-      done:   earningConfigured,
-      title:  "Configure earning rules",
-      desc:   "Set points per currency, order amount type, and tier multipliers in Settings.",
-      action: { label: "Go to Settings", url: "/app/settings", external: false },
-      manual: false,
-    },
-    {
-      key:    "redemption_configured",
-      auto:   true,
-      done:   redemptionConfigured,
-      title:  "Set redemption rates & voucher presets",
-      desc:   "Configure how many points equal a discount and the 3 voucher amounts in Settings → Redemption.",
-      action: { label: "Go to Settings", url: "/app/settings", external: false },
-      manual: false,
     },
     {
       key:    "auto_page",
@@ -458,31 +358,42 @@ export default function Index() {
       action: loyaltyPage
         ? { label: "View page", url: `https://${storeDomain}/pages/${loyaltyPage.handle}`, external: true }
         : null,
-      manual: false,
     },
     {
       key:    "embed_enabled",
       auto:   embedAuto,
-      done:   embedDetectedLive ?? checks.embed_enabled,
+      done:   embedDetected ?? checks.embed_enabled,
       title:  "Enable App Embed in theme",
       desc:   embedAuto
         ? "Detected automatically from your live storefront."
-        : "Auto-detection unavailable — open the theme editor, go to App Embeds, and toggle on Loyalty Widget.",
-      action: { label: "Open App Embeds", url: `${adminBase}/themes/current/editor?context=apps${themeEditorPreviewPath}`, external: true },
-      manual: !embedAuto,
-      recheckable: true,
+        : "We couldn't verify this automatically (dev store password, or the fetch failed) — open the theme editor, go to App Embeds, and toggle on Loyalty Widget.",
+      action: { label: "Open App Embeds", url: `${adminBase}/themes/current/editor?context=apps`, external: true },
     },
     {
       key:    "cta_added",
       auto:   ctaAuto,
-      done:   ctaDetectedLive ?? checks.cta_added,
+      done:   ctaDetected ?? checks.cta_added,
       title:  "Add loyalty widget to your storefront",
       desc:   ctaAuto
         ? "Detected automatically — a loyalty section or CTA block is live on your storefront."
-        : "Auto-detection unavailable — use the theme editor to add the Loyalty Register section or CTA block.",
-      action: { label: "Open theme editor", url: `${themeEditorBaseUrl}${previewPathParam ? `?previewPath=${previewPathParam}` : ""}`, external: true },
-      manual: !ctaAuto,
-      recheckable: true,
+        : "Use the theme editor to add the Loyalty Register section or CTA block to your homepage or product pages.",
+      action: { label: "Open theme editor", url: `${adminBase}/themes/current/editor`, external: true },
+    },
+    {
+      key:    "earning_configured",
+      auto:   true,
+      done:   earningConfigured,
+      title:  "Configure earning rules",
+      desc:   "Set points per currency, order amount type, and tier multipliers in Settings.",
+      action: { label: "Go to Settings", url: "/app/settings", external: false },
+    },
+    {
+      key:    "redemption_configured",
+      auto:   true,
+      done:   redemptionConfigured,
+      title:  "Set redemption rates & voucher presets",
+      desc:   "Configure how many points equal a discount and the 3 voucher amounts in Settings → Redemption.",
+      action: { label: "Go to Settings", url: "/app/settings", external: false },
     },
   ];
 
@@ -490,36 +401,17 @@ export default function Index() {
   const allDone   = doneCount === checklist.length;
   const pct       = Math.round((doneCount / checklist.length) * 100);
 
-  const [checklistExpanded, setChecklistExpanded] = useState(!allDone);
-  const [howItWorksOpen, setHowItWorksOpen]         = useState(!allDone);
-  const [widgetGuideOpen, setWidgetGuideOpen]       = useState(!allDone);
-
-  // Program status — three states instead of a flat Active/Not-configured binary
-  const programStatus = !hasSettings
-    ? { label: "Not configured", sub: "complete setup below", tone: "critical" as const }
-    : memberCount === 0
-      ? { label: "Awaiting first member", sub: "earning rules set, no members yet", tone: "warning" as const }
-      : { label: "Active", sub: "earning rules set", tone: "success" as const };
-
-  const statusColors = {
-    critical: { bg: COLOR.criticalBg, fg: COLOR.critical },
-    warning:  { bg: COLOR.warningBg,  fg: COLOR.warning },
-    success:  { bg: COLOR.accentBg,   fg: COLOR.accent },
-  }[programStatus.tone];
-
   const quickLinks = [
-    { label: "Analytics",       url: "/app/analytics",              icon: <IconChartBar size={15} />,   external: false },
-    { label: "Settings",        url: "/app/settings",                icon: <IconSettings size={15} />,   external: false },
-    { label: "View storefront", url: `https://${storeDomain}`,       icon: <IconStorefront size={15} />, external: true },
-    { label: "Help & docs",     url: "https://help.shopify.com/en/manual", icon: <IconHelp size={15} />, external: true },
+    { label: "Analytics", url: "/app/analytics", icon: <IconChartBar size={15} /> },
+    { label: "Settings",  url: "/app/settings",  icon: <IconSettings size={15} /> },
   ];
 
   const howItWorks = [
-    { icon: <IconCart size={15} />,   step: "Order placed",     desc: "Points awarded as pending" },
-    { icon: <IconBox size={15} />,    step: "Order fulfilled",  desc: "Points become spendable" },
-    { icon: <IconGift size={15} />,   step: "Customer redeems", desc: "Discount code generated" },
-    { icon: <IconTrophy size={15} />, step: "Tier upgrade",     desc: "Based on lifetime points" },
-    { icon: <IconLink size={15} />,   step: "Referral bonus",   desc: "Both parties earn extra pts" },
+    { icon: <IconCart size={15} />,     step: "Order placed",     desc: "Points awarded as pending" },
+    { icon: <IconBox size={15} />,      step: "Order fulfilled",  desc: "Points become spendable" },
+    { icon: <IconGift size={15} />,     step: "Customer redeems", desc: "Discount code generated" },
+    { icon: <IconTrophy size={15} />,   step: "Tier upgrade",     desc: "Based on lifetime points" },
+    { icon: <IconLink size={15} />,     step: "Referral bonus",   desc: "Both parties earn extra pts" },
   ];
 
   const widgetGuide = [
@@ -547,272 +439,188 @@ export default function Index() {
   ];
 
   return (
-    <s-page heading={`Welcome to Loyalify${storeLabel ? `, ${storeLabel}` : ""}`}>
+    <s-page heading={`Welcome to Loyalify${(shop as any).name ? `, ${(shop as any).name}` : ""}`}>
 
       {/* ── Stats ── */}
       <s-section>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
-          <div style={{ ...cardShell, padding: "16px 18px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
-              <div style={{ width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: COLOR.accentBg, color: COLOR.accent }}>
-                <StatIcon name="members" />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: "12px", color: COLOR.textSecondary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "4px" }}>Loyalty members</div>
-                <div style={{ fontSize: "19px", fontWeight: 700, color: COLOR.text, marginBottom: "2px" }}>{memberCount.toLocaleString()}</div>
-                <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>enrolled customers</div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ ...cardShell, padding: "16px 18px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
-              <div style={{ width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: statusColors.bg, color: statusColors.fg }}>
-                <StatIcon name="status" />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: "12px", color: COLOR.textSecondary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "4px" }}>Program status</div>
-                <div style={{ fontSize: "19px", fontWeight: 700, color: statusColors.fg, marginBottom: "2px" }}>{programStatus.label}</div>
-                <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>{programStatus.sub}</div>
+          {[
+            { icon: "members" as const, label: "Loyalty members",  value: memberCount.toLocaleString(), sub: "enrolled customers" },
+            { icon: "status" as const,  label: "Program status",   value: hasSettings ? "Active" : "Not configured", sub: hasSettings ? "earning rules set" : "complete setup below", warn: !hasSettings },
+            { icon: "store" as const,   label: "Store",             value: (shop as any).name ?? storeDomain, sub: (shop as any).currencyCode ?? "" },
+          ].map(({ icon, label, value, sub, warn }) => (
+            <div key={label} style={{ ...cardShell, padding: "16px 18px" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
+                <div style={{
+                  width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: warn ? COLOR.criticalBg : COLOR.accentBg,
+                  color: warn ? COLOR.critical : COLOR.accent,
+                }}>
+                  <StatIcon name={icon} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: "12px", color: COLOR.textSecondary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "4px" }}>{label}</div>
+                  <div style={{ fontSize: "19px", fontWeight: 700, color: warn ? COLOR.critical : COLOR.text, marginBottom: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+                  <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>{sub}</div>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div style={{ ...cardShell, padding: "16px 18px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
-              <div style={{ width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: COLOR.accentBg, color: COLOR.accent }}>
-                <StatIcon name="store" />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: "12px", color: COLOR.textSecondary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "4px" }}>Store</div>
-                <div style={{ fontSize: "19px", fontWeight: 700, color: COLOR.text, marginBottom: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{storeLabel}</div>
-                <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>{(shop as any).currencyCode ?? ""}</div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </s-section>
 
       {/* ── Checklist ── */}
       <s-section heading="Setup checklist">
-        {allDone && !checklistExpanded ? (
-          <div style={{ ...cardShell, padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{ width: "24px", height: "24px", borderRadius: "50%", background: COLOR.successBg, color: COLOR.success, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <IconCheck size={12} color={COLOR.success} />
-              </div>
-              <span style={{ fontSize: "13.5px", fontWeight: 600, color: COLOR.text }}>Setup complete — your loyalty program is fully configured.</span>
+        <div style={{ ...cardShell, padding: "18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: COLOR.textSecondary }}>
+              {allDone && <IconSparkles size={14} color={COLOR.success} />}
+              {allDone ? "All steps complete" : `${doneCount} of ${checklist.length} steps completed`}
             </div>
-            <button onClick={() => setChecklistExpanded(true)} style={ghostBtn}>
-              View checklist <IconChevronDown size={12} />
-            </button>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.text }}>{pct}%</div>
           </div>
-        ) : (
-          <div style={{ ...cardShell, padding: "18px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: COLOR.textSecondary }}>
-                {allDone && <IconSparkles size={14} color={COLOR.success} />}
-                {allDone ? "All steps complete" : `${doneCount} of ${checklist.length} steps completed`}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.text }}>{pct}%</div>
-                {allDone && (
-                  <button onClick={() => setChecklistExpanded(false)} style={ghostBtn}>
-                    Collapse
-                  </button>
-                )}
-              </div>
-            </div>
-            <div style={{ height: "6px", background: COLOR.surfaceSubtle, borderRadius: "999px", overflow: "hidden", marginBottom: "20px" }}>
-              <div style={{ height: "100%", borderRadius: "999px", background: allDone ? COLOR.success : COLOR.text, width: `${pct}%`, transition: "width 0.5s ease" }} />
-            </div>
+          <div style={{ height: "6px", background: COLOR.surfaceSubtle, borderRadius: "999px", overflow: "hidden", marginBottom: "20px" }}>
+            <div style={{ height: "100%", borderRadius: "999px", background: allDone ? COLOR.success : COLOR.text, width: `${pct}%`, transition: "width 0.5s ease" }} />
+          </div>
 
-            {checklist.map(({ key, auto, done, title, desc, action, manual, recheckable }, i) => (
-              <div key={key} style={{
-                display: "flex", gap: "14px", alignItems: "flex-start",
-                padding: "14px", margin: "0 -14px",
-                borderTop: i === 0 ? "none" : `1px solid ${COLOR.borderSubtle}`,
-                borderLeft: manual ? `2px dashed ${COLOR.border}` : "2px solid transparent",
-                borderRadius: manual ? "0 8px 8px 0" : 0,
-                background: manual ? COLOR.surfaceSubtle : "transparent",
-              }}>
-                {/* Checkbox — auto/detected ones show tick, manual fallback ones are clickable */}
-                {auto ? (
-                  <div style={{
-                    width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0, marginTop: "2px",
-                    background: done ? COLOR.text : COLOR.surface,
-                    border: `2px solid ${done ? COLOR.text : COLOR.border}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "12px", color: "#fff",
-                  }}>
-                    {done ? <IconCheck size={11} color="#fff" /> : <span style={{ color: COLOR.textTertiary, fontSize: "10px", fontWeight: 700 }}>{i + 1}</span>}
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => toggle(key)}
-                    title={done ? "Mark as not done" : "Mark as done"}
-                    style={{
-                      width: "22px", height: "22px", borderRadius: "5px", flexShrink: 0, marginTop: "2px",
-                      background: done ? COLOR.text : "#fff",
-                      border: `2px solid ${done ? COLOR.text : "#d1d5db"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      cursor: "pointer", color: "#fff",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    {done && <IconCheck size={11} color="#fff" />}
-                  </button>
-                )}
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px", flexWrap: "wrap" }}>
-                    <div style={{
-                      fontWeight: 600, fontSize: "14px",
-                      color: done ? COLOR.textTertiary : COLOR.text,
-                      textDecoration: done ? "line-through" : "none",
-                    }}>
-                      {title}
-                    </div>
-                    {done && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: COLOR.successBg, color: "#00512F", fontSize: "11px", fontWeight: 600, padding: "1px 8px", borderRadius: "999px", border: "1px solid #B7E3CD" }}>
-                        <IconCheck size={9} color="#00512F" /> Done
-                      </span>
-                    )}
-                    {manual && (
-                      <span title="Auto-detection isn't available for this store, so this step is tracked manually." style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: "#fff", color: COLOR.textSecondary, fontSize: "11px", fontWeight: 600, padding: "1px 8px", borderRadius: "999px", border: `1px solid ${COLOR.border}` }}>
-                        <IconInfo size={10} color={COLOR.textSecondary} /> Manual check
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: "13px", color: COLOR.textSecondary, lineHeight: 1.5 }}>{desc}</div>
-                  <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                    {action && !done && (
-                      action.external ? (
-                        <a href={action.url} target="_blank" rel="noreferrer" style={primaryBtn}>
-                          {action.label} <IconExternal size={11} color="#fff" />
-                        </a>
-                      ) : (
-                        <Link to={action.url} style={secondaryBtn}>
-                          {action.label} <IconArrowRight size={11} />
-                        </Link>
-                      )
-                    )}
-                    {recheckable && (
-                      <button onClick={runRecheck} disabled={isRechecking} style={{ ...ghostBtn, opacity: isRechecking ? 0.6 : 1, cursor: isRechecking ? "wait" : "pointer" }}>
-                        <IconRefresh size={12} /> {isRechecking ? "Checking…" : "Recheck"}
-                      </button>
-                    )}
-                  </div>
+          {checklist.map(({ key, auto, done, title, desc, action }, i) => (
+            <div key={key} style={{
+              display: "flex", gap: "14px", alignItems: "flex-start",
+              padding: "14px 0",
+              borderTop: i === 0 ? "none" : `1px solid ${COLOR.borderSubtle}`,
+            }}>
+              {/* Checkbox — auto/detected ones show tick, manual fallback ones are clickable */}
+              {auto ? (
+                <div style={{
+                  width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0, marginTop: "2px",
+                  background: done ? COLOR.text : COLOR.surfaceSubtle,
+                  border: `2px solid ${done ? COLOR.text : COLOR.border}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "12px", color: "#fff",
+                }}>
+                  {done ? <IconCheck size={11} color="#fff" /> : <span style={{ color: COLOR.textTertiary, fontSize: "10px", fontWeight: 700 }}>{i + 1}</span>}
                 </div>
+              ) : (
+                <button
+                  onClick={() => toggle(key)}
+                  title={done ? "Mark as not done" : "Mark as done"}
+                  style={{
+                    width: "22px", height: "22px", borderRadius: "5px", flexShrink: 0, marginTop: "2px",
+                    background: done ? COLOR.text : "#fff",
+                    border: `2px solid ${done ? COLOR.text : "#d1d5db"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", color: "#fff",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {done && <IconCheck size={11} color="#fff" />}
+                </button>
+              )}
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px", flexWrap: "wrap" }}>
+                  <div style={{
+                    fontWeight: 600, fontSize: "14px",
+                    color: done ? COLOR.textTertiary : COLOR.text,
+                    textDecoration: done ? "line-through" : "none",
+                  }}>
+                    {title}
+                  </div>
+                  {done && (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", background: COLOR.successBg, color: "#00512F", fontSize: "11px", fontWeight: 600, padding: "1px 8px", borderRadius: "999px", border: "1px solid #B7E3CD" }}>
+                      <IconCheck size={9} color="#00512F" /> Done
+                    </span>
+                  )}
+                  {!auto && !done && (
+                    <span style={{ fontSize: "11px", color: COLOR.textTertiary }}>click checkbox when done</span>
+                  )}
+                </div>
+                <div style={{ fontSize: "13px", color: COLOR.textSecondary, lineHeight: 1.5 }}>{desc}</div>
+                {action && !done && (
+                  <div style={{ marginTop: "8px" }}>
+                    {action.external ? (
+                      <a href={action.url} target="_blank" rel="noreferrer" style={primaryBtn}>
+                        {action.label} <IconExternal size={11} color="#fff" />
+                      </a>
+                    ) : (
+                      <Link to={action.url} style={secondaryBtn}>
+                        {action.label} <IconArrowRight size={11} />
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
       </s-section>
 
       {/* ── Quick links aside ── */}
       <s-section slot="aside" heading="Quick links">
-        {quickLinks.map(({ label, url, icon, external }) => (
+        {quickLinks.map(({ label, url, icon }) => (
           <div key={url} style={{ marginBottom: "8px" }}>
-            {external ? (
-              <a href={url} target="_blank" rel="noreferrer" style={{
-                display: "flex", alignItems: "center", gap: "10px",
-                padding: "10px 14px", borderRadius: "8px",
-                background: COLOR.surfaceSubtle, border: `1px solid ${COLOR.borderSubtle}`,
-                fontSize: "13.5px", fontWeight: 500, color: COLOR.text,
-                textDecoration: "none",
-              }}>
-                <span style={{ color: COLOR.textSecondary, display: "flex" }}>{icon}</span>
-                {label}
-                <span style={{ marginLeft: "auto", color: COLOR.textTertiary, display: "flex" }}><IconExternal size={11} /></span>
-              </a>
-            ) : (
-              <Link to={url} style={{
-                display: "flex", alignItems: "center", gap: "10px",
-                padding: "10px 14px", borderRadius: "8px",
-                background: COLOR.surfaceSubtle, border: `1px solid ${COLOR.borderSubtle}`,
-                fontSize: "13.5px", fontWeight: 500, color: COLOR.text,
-                textDecoration: "none",
-              }}>
-                <span style={{ color: COLOR.textSecondary, display: "flex" }}>{icon}</span>
-                {label}
-              </Link>
-            )}
+            <Link to={url} style={{
+              display: "flex", alignItems: "center", gap: "10px",
+              padding: "10px 14px", borderRadius: "8px",
+              background: COLOR.surfaceSubtle, border: `1px solid ${COLOR.borderSubtle}`,
+              fontSize: "13.5px", fontWeight: 500, color: COLOR.text,
+              textDecoration: "none",
+            }}>
+              <span style={{ color: COLOR.textSecondary, display: "flex" }}>{icon}</span>
+              {label}
+            </Link>
           </div>
         ))}
       </s-section>
 
-      {/* ── How it works aside (collapsible) ── */}
-      <s-section slot="aside">
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }} onClick={() => setHowItWorksOpen((o) => !o)}>
-          <span style={{ fontSize: "13.5px", fontWeight: 600, color: COLOR.text }}>How it works</span>
-          <span style={{ display: "flex", color: COLOR.textSecondary, transform: howItWorksOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
-            <IconChevronDown size={13} />
-          </span>
-        </div>
-        {howItWorksOpen && (
-          <div style={{ marginTop: "12px" }}>
-            {howItWorks.map(({ icon, step, desc }, i) => (
-              <div key={step} style={{ display: "flex", gap: "10px", marginBottom: i === howItWorks.length - 1 ? 0 : "12px", alignItems: "flex-start" }}>
+      {/* ── How it works aside ── */}
+      <s-section slot="aside" heading="How it works">
+        {howItWorks.map(({ icon, step, desc }, i) => (
+          <div key={step} style={{ display: "flex", gap: "10px", marginBottom: i === howItWorks.length - 1 ? 0 : "12px", alignItems: "flex-start" }}>
+            <div style={{
+              width: "26px", height: "26px", borderRadius: "7px", flexShrink: 0,
+              background: COLOR.accentBg, color: COLOR.accent,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {icon}
+            </div>
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: COLOR.text }}>{step}</div>
+              <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>{desc}</div>
+            </div>
+          </div>
+        ))}
+      </s-section>
+
+      {/* ── Widget guide ── */}
+      <s-section heading="Adding the widget to your storefront">
+        <div style={{ ...cardShell, padding: "18px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            {widgetGuide.map(({ icon, title, desc, tag, tagOk }) => (
+              <div key={title} style={{ background: COLOR.surfaceSubtle, border: `1px solid ${COLOR.borderSubtle}`, borderRadius: "10px", padding: "16px" }}>
                 <div style={{
-                  width: "26px", height: "26px", borderRadius: "7px", flexShrink: 0,
-                  background: COLOR.accentBg, color: COLOR.accent,
-                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: "36px", height: "36px", borderRadius: "9px", marginBottom: "10px",
+                  background: COLOR.accentBg, display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
                   {icon}
                 </div>
-                <div>
-                  <div style={{ fontSize: "13px", fontWeight: 600, color: COLOR.text }}>{step}</div>
-                  <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>{desc}</div>
+                <div style={{ fontWeight: 600, fontSize: "14px", marginBottom: "4px", color: COLOR.text }}>{title}</div>
+                <div style={{ fontSize: "13px", color: COLOR.textSecondary, marginBottom: "10px", lineHeight: 1.5 }}>{desc}</div>
+                <div style={{
+                  fontSize: "11px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "5px",
+                  color: tagOk ? "#00512F" : COLOR.text,
+                  background: tagOk ? COLOR.successBg : "#fff",
+                  padding: "4px 9px", borderRadius: "5px",
+                  border: `1px solid ${tagOk ? "#B7E3CD" : COLOR.border}`,
+                }}>
+                  {tagOk && <IconCheck size={10} color="#00512F" />}
+                  {tag}
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </s-section>
-
-      {/* ── Widget guide (collapsible once setup is complete) ── */}
-      <s-section heading="Adding the widget to your storefront">
-        {!widgetGuideOpen ? (
-          <div style={{ ...cardShell, padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "13px", color: COLOR.textSecondary }}>Reference for the widget, section, CTA block, and rewards page.</span>
-            <button onClick={() => setWidgetGuideOpen(true)} style={ghostBtn}>
-              Show guide <IconChevronDown size={12} />
-            </button>
-          </div>
-        ) : (
-          <div style={{ ...cardShell, padding: "18px" }}>
-            {allDone && (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
-                <button onClick={() => setWidgetGuideOpen(false)} style={ghostBtn}>Collapse</button>
-              </div>
-            )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              {widgetGuide.map(({ icon, title, desc, tag, tagOk }) => (
-                <div key={title} style={{ background: COLOR.surfaceSubtle, border: `1px solid ${COLOR.borderSubtle}`, borderRadius: "10px", padding: "16px" }}>
-                  <div style={{
-                    width: "36px", height: "36px", borderRadius: "9px", marginBottom: "10px",
-                    background: COLOR.accentBg, display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {icon}
-                  </div>
-                  <div style={{ fontWeight: 600, fontSize: "14px", marginBottom: "4px", color: COLOR.text }}>{title}</div>
-                  <div style={{ fontSize: "13px", color: COLOR.textSecondary, marginBottom: "10px", lineHeight: 1.5 }}>{desc}</div>
-                  <div style={{
-                    fontSize: "11px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "5px",
-                    color: tagOk ? "#00512F" : COLOR.text,
-                    background: tagOk ? COLOR.successBg : "#fff",
-                    padding: "4px 9px", borderRadius: "5px",
-                    border: `1px solid ${tagOk ? "#B7E3CD" : COLOR.border}`,
-                  }}>
-                    {tagOk && <IconCheck size={10} color="#00512F" />}
-                    {tag}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
       </s-section>
 
     </s-page>
