@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs, HeadersFunction } from "react-router";
-import { useLoaderData, useFetcher, Link } from "react-router";
+import { useLoaderData, useFetcher, useRevalidator, Link } from "react-router";
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
@@ -28,9 +28,9 @@ const REDEMPTION_DEFAULTS: Record<string, number | string> = {
   voucherPreset3: 2000,
 };
 
-function StatIcon({ name }: { name: "members" | "status" | "store" }) {
+function StatIcon({ name, size = 16 }: { name: "members" | "status" | "store"; size?: number }) {
   const common = {
-    width: 20, height: 20, viewBox: "0 0 24 24",
+    width: size, height: size, viewBox: "0 0 24 24",
     fill: "none", stroke: "currentColor", strokeWidth: 1.75,
     strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
   };
@@ -61,15 +61,37 @@ function StatIcon({ name }: { name: "members" | "status" | "store" }) {
   );
 }
 
+// Coerce Prisma Decimal / string / number into something comparable.
+// Prisma returns Decimal fields as Decimal.js objects, so a naive
+// `settings.bronzeMultiplier !== 1.0` is comparing an object to a number
+// and is ALWAYS true — even on a freshly-installed, untouched shop.
+function toComparable(v: unknown): number | string | null | undefined {
+  if (v === null || v === undefined) return v;
+  if (typeof v === "number" || typeof v === "string") return v;
+  if (typeof (v as any).toNumber === "function") return (v as any).toNumber();
+  if (typeof (v as any).toString === "function") {
+    const n = Number((v as any).toString());
+    return Number.isNaN(n) ? (v as any).toString() : n;
+  }
+  return v as any;
+}
+
 function differsFromDefaults(settings: any, defaults: Record<string, number | string>) {
   if (!settings) return false;
-  return Object.entries(defaults).some(([key, def]) => (settings as any)[key] !== def);
+  return Object.entries(defaults).some(([key, def]) => {
+    const raw = toComparable((settings as any)[key]);
+    if (typeof raw === "number" && typeof def === "number") {
+      // epsilon guard against float/Decimal round-trip drift (1.25 vs 1.2500000000001)
+      return Math.abs(raw - def) > 1e-9;
+    }
+    return raw !== def;
+  });
 }
 
 // Best-effort live storefront check — no read_themes scope required.
 // Fetches the public homepage HTML and looks for our widget script tags.
 // Returns null (not a boolean) for a flag when we genuinely can't tell
-// (password-protected dev store, network error, timeout) so the UI can
+// (password-protected store, network error, timeout) so the UI can
 // fall back to a manual checkbox instead of showing a false negative.
 async function detectStorefrontFeatures(storeDomain: string): Promise<{
   embedDetected: boolean | null;
@@ -79,10 +101,25 @@ async function detectStorefrontFeatures(storeDomain: string): Promise<{
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(`https://${storeDomain}/`, { signal: controller.signal });
+    const res = await fetch(`https://${storeDomain}/`, { signal: controller.signal, redirect: "follow" });
     clearTimeout(timer);
-    if (!res.ok) return { embedDetected: null, ctaDetected: null };
+
+    // Password-protected (or "coming soon" gated) storefronts 30x-redirect to
+    // /password. fetch() follows redirects silently and still returns res.ok
+    // = true for the password page itself, so checking res.ok is NOT enough —
+    // we have to check where we actually landed.
+    if (!res.ok || /\/(password|challenge)(\/|$|\?)/.test(res.url)) {
+      return { embedDetected: null, ctaDetected: null };
+    }
+
     const html = await res.text();
+
+    // Belt-and-suspenders: some themes render the password form at "/" itself
+    // with a 200 status and no redirect at all.
+    if (/template-password/i.test(html) && /name=["']password["']/i.test(html)) {
+      return { embedDetected: null, ctaDetected: null };
+    }
+
     return {
       embedDetected: html.includes("loyalty-widget.js"),
       ctaDetected: html.includes("loyalty-cta.js") || html.includes("loyalty-register"),
@@ -111,8 +148,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const loyaltyPage = (await pageRes.json()).data?.pages?.nodes?.[0] ?? null;
 
-  // Load saved manual checks — graceful fallback if column missing (pre-migration)
-  let manualChecks: Record<string, boolean> = {};
+  // Load saved manual checks / overrides — graceful fallback if column missing (pre-migration)
+  let manualChecks: Record<string, boolean | null> = {};
   try {
     manualChecks = (settings as any)?.manualChecks
       ? JSON.parse((settings as any).manualChecks)
@@ -132,7 +169,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-// ── Action — save manual check toggles (fallback only, when auto-detection is unavailable) ──
+// ── Action — save manual check toggles / overrides ──
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -269,6 +306,15 @@ const IconSparkles = ({ size = 15, color = "currentColor" }: IconProps) => (
   </svg>
 );
 
+const IconRefresh = ({ size = 12, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13.6 6.3A5.5 5.5 0 0 0 3 8" />
+    <path d="M2.4 9.7A5.5 5.5 0 0 0 13 8" />
+    <path d="M13.6 3v3.3H10.3" />
+    <path d="M2.4 13v-3.3h3.3" />
+  </svg>
+);
+
 // ── Design tokens (shared with analytics page) ────────────────────────────────
 
 const COLOR = {
@@ -307,6 +353,12 @@ const secondaryBtn: React.CSSProperties = {
   border: `1px solid ${COLOR.border}`,
 };
 
+const linkBtnStyle: React.CSSProperties = {
+  background: "none", border: "none", padding: 0, marginTop: "6px",
+  fontSize: "11.5px", color: COLOR.accent, cursor: "pointer",
+  textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: "4px",
+};
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Index() {
@@ -315,18 +367,27 @@ export default function Index() {
     earningConfigured, redemptionConfigured, embedDetected, ctaDetected,
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
+  const revalidator = useRevalidator();
 
   const storeDomain = (shop as any).myshopifyDomain ?? "";
   const adminBase   = `https://admin.shopify.com/store/${storeDomain.replace(".myshopify.com", "")}`;
 
-  // Manual fallback state — only ever read/used when live detection returns null
-  // (e.g. password-protected dev store, storefront fetch failed).
+  // Manual fallback state — used when live detection returns null
+  // (e.g. password-protected store, storefront fetch failed).
   const [checks, setChecks] = useState<Record<string, boolean>>({
     embed_enabled: !!manualChecks?.embed_enabled,
     cta_added:     !!manualChecks?.cta_added,
   });
 
-  const toggle = (key: string) => {
+  // Manual overrides — let a merchant correct an auto-detected value that's
+  // wrong for reasons other than "we couldn't check" (renamed asset, CDN
+  // caching, headless storefront, etc). null = no override, defer to auto.
+  const [overrides, setOverrides] = useState<Record<string, boolean | null>>({
+    embed_enabled: manualChecks?.embed_enabled_override ?? null,
+    cta_added:     manualChecks?.cta_added_override ?? null,
+  });
+
+  const toggleManual = (key: string) => {
     const next = { ...checks, [key]: !checks[key] };
     setChecks(next);
     fetcher.submit(
@@ -335,8 +396,27 @@ export default function Index() {
     );
   };
 
-  const embedAuto = embedDetected !== null;
-  const ctaAuto   = ctaDetected !== null;
+  const setOverride = (key: string, value: boolean | null) => {
+    const next = { ...overrides, [key]: value };
+    setOverrides(next);
+    fetcher.submit(
+      { key: `${key}_override`, value },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Per-item resolved state: override (if set) > live detection > manual fallback checkbox.
+  const resolve = (key: "embed_enabled" | "cta_added", detected: boolean | null) => {
+    const overridden = overrides[key] !== null && overrides[key] !== undefined;
+    const done = overridden ? (overrides[key] as boolean) : (detected ?? checks[key]);
+    // "auto" = show the numbered/checked circle (read-only, detection-driven display).
+    // Anything overridden or undetectable becomes a clickable manual checkbox.
+    const auto = detected !== null && !overridden;
+    return { done, auto, overridden, detectable: detected !== null };
+  };
+
+  const embed = resolve("embed_enabled", embedDetected);
+  const cta   = resolve("cta_added", ctaDetected);
 
   const checklist = [
     {
@@ -346,6 +426,7 @@ export default function Index() {
       title:  "App installed & configured",
       desc:   "Your loyalty program is active and ready to accept members.",
       action: null,
+      extra:  null,
     },
     {
       key:    "auto_page",
@@ -358,26 +439,41 @@ export default function Index() {
       action: loyaltyPage
         ? { label: "View page", url: `https://${storeDomain}/pages/${loyaltyPage.handle}`, external: true }
         : null,
+      extra: null,
     },
     {
       key:    "embed_enabled",
-      auto:   embedAuto,
-      done:   embedDetected ?? checks.embed_enabled,
+      auto:   embed.auto,
+      done:   embed.done,
       title:  "Enable App Embed in theme",
-      desc:   embedAuto
+      desc:   embed.auto
         ? "Detected automatically from your live storefront."
-        : "We couldn't verify this automatically (dev store password, or the fetch failed) — open the theme editor, go to App Embeds, and toggle on Loyalty Widget.",
+        : embed.detectable
+          ? "You've corrected this manually — click again to clear the override."
+          : "We couldn't verify this automatically (password-protected store, or the check failed) — open the theme editor, go to App Embeds, and toggle on Loyalty Widget.",
       action: { label: "Open App Embeds", url: `${adminBase}/themes/current/editor?context=apps`, external: true },
+      extra: embed.auto
+        ? { label: "Not accurate? Override manually", onClick: () => setOverride("embed_enabled", !embed.done) }
+        : embed.overridden
+          ? { label: "Reset to automatic detection", onClick: () => setOverride("embed_enabled", null) }
+          : null,
     },
     {
       key:    "cta_added",
-      auto:   ctaAuto,
-      done:   ctaDetected ?? checks.cta_added,
+      auto:   cta.auto,
+      done:   cta.done,
       title:  "Add loyalty widget to your storefront",
-      desc:   ctaAuto
+      desc:   cta.auto
         ? "Detected automatically — a loyalty section or CTA block is live on your storefront."
-        : "Use the theme editor to add the Loyalty Register section or CTA block to your homepage or product pages.",
+        : cta.detectable
+          ? "You've corrected this manually — click again to clear the override."
+          : "We couldn't verify this automatically (password-protected store, or the check failed) — use the theme editor to add the Loyalty Register section or CTA block.",
       action: { label: "Open theme editor", url: `${adminBase}/themes/current/editor`, external: true },
+      extra: cta.auto
+        ? { label: "Not accurate? Override manually", onClick: () => setOverride("cta_added", !cta.done) }
+        : cta.overridden
+          ? { label: "Reset to automatic detection", onClick: () => setOverride("cta_added", null) }
+          : null,
     },
     {
       key:    "earning_configured",
@@ -386,6 +482,7 @@ export default function Index() {
       title:  "Configure earning rules",
       desc:   "Set points per currency, order amount type, and tier multipliers in Settings.",
       action: { label: "Go to Settings", url: "/app/settings", external: false },
+      extra: null,
     },
     {
       key:    "redemption_configured",
@@ -394,6 +491,7 @@ export default function Index() {
       title:  "Set redemption rates & voucher presets",
       desc:   "Configure how many points equal a discount and the 3 voucher amounts in Settings → Redemption.",
       action: { label: "Go to Settings", url: "/app/settings", external: false },
+      extra: null,
     },
   ];
 
@@ -443,28 +541,33 @@ export default function Index() {
 
       {/* ── Stats ── */}
       <s-section>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "10px" }}>
           {[
-            { icon: "members" as const, label: "Loyalty members",  value: memberCount.toLocaleString(), sub: "enrolled customers" },
-            { icon: "status" as const,  label: "Program status",   value: hasSettings ? "Active" : "Not configured", sub: hasSettings ? "earning rules set" : "complete setup below", warn: !hasSettings },
-            { icon: "store" as const,   label: "Store",             value: (shop as any).name ?? storeDomain, sub: (shop as any).currencyCode ?? "" },
+            { icon: "members" as const, label: "Loyalty members", value: memberCount.toLocaleString(), sub: "enrolled customers" },
+            { icon: "status" as const,  label: "Program status",  value: hasSettings ? "Active" : "Not configured", sub: hasSettings ? "earning rules set" : "complete setup below", warn: !hasSettings },
+            { icon: "store" as const,   label: "Store",            value: (shop as any).name ?? storeDomain, sub: (shop as any).currencyCode ?? "" },
           ].map(({ icon, label, value, sub, warn }) => (
-            <div key={label} style={{ ...cardShell, padding: "16px 18px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "14px" }}>
-                <div style={{
-                  width: "38px", height: "38px", borderRadius: "9px", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: warn ? COLOR.criticalBg : COLOR.accentBg,
-                  color: warn ? COLOR.critical : COLOR.accent,
+            <div key={label} style={{ ...cardShell, padding: "13px 16px", flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "7px" }}>
+                <span style={{ display: "flex", color: warn ? COLOR.critical : COLOR.textTertiary }}>
+                  <StatIcon name={icon} size={15} />
+                </span>
+                <span style={{
+                  fontSize: "11px", fontWeight: 600, color: COLOR.textSecondary,
+                  textTransform: "uppercase", letterSpacing: "0.03em",
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 }}>
-                  <StatIcon name={icon} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: "12px", color: COLOR.textSecondary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: "4px" }}>{label}</div>
-                  <div style={{ fontSize: "19px", fontWeight: 700, color: warn ? COLOR.critical : COLOR.text, marginBottom: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
-                  <div style={{ fontSize: "12px", color: COLOR.textTertiary }}>{sub}</div>
-                </div>
+                  {label}
+                </span>
               </div>
+              <div style={{
+                fontSize: "16px", fontWeight: 700, lineHeight: 1.25,
+                color: warn ? COLOR.critical : COLOR.text,
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {value}
+              </div>
+              <div style={{ fontSize: "11px", color: COLOR.textTertiary, marginTop: "1px" }}>{sub}</div>
             </div>
           ))}
         </div>
@@ -478,19 +581,29 @@ export default function Index() {
               {allDone && <IconSparkles size={14} color={COLOR.success} />}
               {allDone ? "All steps complete" : `${doneCount} of ${checklist.length} steps completed`}
             </div>
-            <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.text }}>{pct}%</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                onClick={() => revalidator.revalidate()}
+                title="Re-check storefront detection"
+                style={{ ...linkBtnStyle, marginTop: 0, textDecoration: "none", color: COLOR.textSecondary }}
+              >
+                <IconRefresh size={12} color={COLOR.textSecondary} />
+                {revalidator.state === "loading" ? "Checking…" : "Recheck"}
+              </button>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: COLOR.text }}>{pct}%</div>
+            </div>
           </div>
           <div style={{ height: "6px", background: COLOR.surfaceSubtle, borderRadius: "999px", overflow: "hidden", marginBottom: "20px" }}>
             <div style={{ height: "100%", borderRadius: "999px", background: allDone ? COLOR.success : COLOR.text, width: `${pct}%`, transition: "width 0.5s ease" }} />
           </div>
 
-          {checklist.map(({ key, auto, done, title, desc, action }, i) => (
+          {checklist.map(({ key, auto, done, title, desc, action, extra }, i) => (
             <div key={key} style={{
               display: "flex", gap: "14px", alignItems: "flex-start",
               padding: "14px 0",
               borderTop: i === 0 ? "none" : `1px solid ${COLOR.borderSubtle}`,
             }}>
-              {/* Checkbox — auto/detected ones show tick, manual fallback ones are clickable */}
+              {/* Checkbox — auto/detected ones show tick, manual/overridden ones are clickable */}
               {auto ? (
                 <div style={{
                   width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0, marginTop: "2px",
@@ -503,7 +616,7 @@ export default function Index() {
                 </div>
               ) : (
                 <button
-                  onClick={() => toggle(key)}
+                  onClick={() => toggleManual(key)}
                   title={done ? "Mark as not done" : "Mark as done"}
                   style={{
                     width: "22px", height: "22px", borderRadius: "5px", flexShrink: 0, marginTop: "2px",
@@ -548,6 +661,11 @@ export default function Index() {
                         {action.label} <IconArrowRight size={11} />
                       </Link>
                     )}
+                  </div>
+                )}
+                {extra && (
+                  <div>
+                    <button onClick={extra.onClick} style={linkBtnStyle}>{extra.label}</button>
                   </div>
                 )}
               </div>
